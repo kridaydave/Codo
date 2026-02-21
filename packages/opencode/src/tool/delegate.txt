@@ -1,0 +1,14 @@
+Delegates a complex or independent task to a specialized sub-agent.
+
+This tool is useful when:
+- A task can be broken down into independent pieces that can be worked on in parallel.
+- A task requires a different persona or specialization (e.g., "Frontend Expert" or "Security Analyst").
+- You want to isolate heavy processing or potentially destructive operations.
+
+The lead agent (you) provides a detailed description of the task. The system then:
+1. Spawns a fresh sub-agent instance.
+2. Hand-overs the task via the A2A (Agent-to-Agent) protocol.
+3. Waits for the sub-agent to complete the work and return its findings.
+
+Example:
+delegate(task="Write a comprehensive test suite for the new A2A types", agent_type="Testing Expert")
