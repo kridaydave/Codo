@@ -1,0 +1,133 @@
+import { LLMProvider, Message, ToolInput, ToolCall } from './types.js';
+
+const SUPPORTED_MODELS = [
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+];
+
+const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+
+export class GeminiProvider implements LLMProvider {
+  name: string;
+  model: string;
+  private apiKey: string;
+
+  constructor(apiKey: string, model: string) {
+    if (!SUPPORTED_MODELS.includes(model)) {
+      throw new Error(`Invalid model: ${model}. Supported models: ${SUPPORTED_MODELS.join(', ')}`);
+    }
+    this.name = 'gemini';
+    this.model = model;
+    this.apiKey = apiKey;
+  }
+
+  async sendMessage(
+    messages: Message[],
+    tools: ToolInput[],
+  ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+    const mappedMessages = this.mapMessages(messages);
+
+    const body = {
+      contents: mappedMessages,
+    };
+
+    let lastError: Error | null = null;
+    const maxRetries = 3;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const response = await fetch(
+          `${BASE_URL}/models/${this.model}:generateContent?key=${this.apiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+          },
+        );
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('retry-after');
+          const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : 5000;
+          console.log(`◎ Rate limited, retrying in ${waitTime / 1000}s...`);
+          if (attempt < maxRetries - 1) {
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+            continue;
+          } else {
+            throw new Error('Gemini: Rate limit exceeded after 3 retries');
+          }
+        }
+
+        if (response.status === 400) {
+          throw new Error('Gemini: Bad request - check your message format');
+        }
+
+        if (response.status === 401) {
+          throw new Error('Gemini: Invalid API key');
+        }
+
+        if (response.status === 403) {
+          throw new Error(`Gemini: API key doesn't have access to ${this.model}`);
+        }
+
+        if (response.status >= 500) {
+          throw new Error('Gemini: Server error, try again');
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Gemini: Request failed with status ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+        return { content, toolCalls: undefined };
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.message.includes('Rate limit') || error.message.includes('429')) {
+            lastError = error;
+            continue;
+          }
+          throw error;
+        }
+        throw error;
+      }
+    }
+
+    throw lastError || new Error('Gemini: Request failed after retries');
+  }
+
+  private mapMessages(
+    messages: Message[],
+  ): Array<{ role: string; parts: Array<{ text: string }> }> {
+    const mapped: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    let systemMessage = '';
+
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        systemMessage += (systemMessage ? '\n' : '') + msg.content;
+      } else if (msg.role === 'user') {
+        mapped.push({
+          role: 'user',
+          parts: [{ text: msg.content }],
+        });
+      } else if (msg.role === 'assistant') {
+        mapped.push({
+          role: 'model',
+          parts: [{ text: msg.content }],
+        });
+      }
+    }
+
+    if (systemMessage) {
+      mapped.unshift({
+        role: 'user',
+        parts: [{ text: `System: ${systemMessage}` }],
+      });
+    }
+
+    return mapped;
+  }
+}

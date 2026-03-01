@@ -1,24 +1,19 @@
 import { LLMProvider } from './types.js';
 import { AnthropicProvider } from './anthropic.js';
 import { GoogleProvider } from './google.js';
-import { loadConfig } from '../core/config.js';
+import { loadConfig } from '../config/config.js';
+import { createProvider as createProviderFn } from './factory.js';
 
-export type ProviderType = 'anthropic' | 'google' | 'openai';
+export type ProviderType = 'anthropic' | 'google' | 'openai' | 'moonshot' | 'ollama';
 
 export async function createProvider(type?: ProviderType): Promise<LLMProvider> {
   const config = await loadConfig();
-  const providerType = type || config.defaultProvider;
 
-  switch (providerType) {
-    case 'anthropic':
-      return new AnthropicProvider();
-    case 'google':
-      return new GoogleProvider();
-    case 'openai':
-      throw new Error('OpenAI provider not yet implemented');
-    default:
-      throw new Error(`Unknown provider: ${providerType}`);
+  if (type) {
+    config.provider = type as any;
   }
+
+  return createProviderFn(config);
 }
 
 export { AnthropicProvider } from './anthropic.js';

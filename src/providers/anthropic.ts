@@ -1,35 +1,40 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMProvider, Message, ToolInput, ToolCall } from './types.js';
-import { getApiKey } from '../core/config.js';
+
+const SUPPORTED_MODELS = ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
 
 export class AnthropicProvider implements LLMProvider {
   name = 'anthropic';
+  model: string;
   private client: Anthropic;
 
-  constructor(apiKey?: string) {
-    this.client = new Anthropic({
-      apiKey: apiKey || getApiKey('anthropic'),
-    });
+  constructor(apiKey: string, model: string) {
+    if (!SUPPORTED_MODELS.includes(model)) {
+      throw new Error(
+        `Anthropic: Unsupported model '${model}'. Supported: ${SUPPORTED_MODELS.join(', ')}`,
+      );
+    }
+    this.model = model;
+    this.client = new Anthropic({ apiKey });
   }
 
   async sendMessage(
     messages: Message[],
-    tools: ToolInput[]
-  ): Promise<{
-    content: string;
-    toolCalls?: ToolCall[];
-  }> {
-    const anthropicTools = tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: tool.input_schema,
-    }));
+    tools: ToolInput[],
+  ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+    const systemMessages = messages.filter((m) => m.role === 'system');
+    const nonSystemMessages = messages.filter((m) => m.role !== 'system');
 
     const response = await this.client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: this.model,
       max_tokens: 4096,
-      messages: messages as any,
-      tools: anthropicTools as any,
+      system: systemMessages.map((m) => m.content) as any,
+      messages: nonSystemMessages as any,
+      tools: tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.input_schema,
+      })) as any,
     });
 
     const contentBlocks = response.content;

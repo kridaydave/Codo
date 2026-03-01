@@ -45,7 +45,7 @@ export const AgentRow = React.memo(({ state }: AgentRowProps) => {
             <Box>
                 <Text>{statusIcon}  </Text>
                 <Text bold color="white">{state.id}</Text>
-                <Text color="gray">  ·  {state.model}/flash          </Text>
+                <Text color="gray">  ·  {state.model.padEnd(20)}</Text>
                 <Text color={statusColor} dimColor={state.status === 'stuck' && !pulse}>{statusText.padEnd(9)}</Text>
                 <Text color="gray" dimColor>{state.startTime ? timer : ''}</Text>
                 {state.status === 'stuck' && <Text color="yellow">  ⚠</Text>}
