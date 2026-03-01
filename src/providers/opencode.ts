@@ -7,6 +7,8 @@ const SUPPORTED_MODELS = [
   'opencode/claude-3.5-sonnet',
   'opencode/gemini-2.5-flash',
   'opencode/gemini-2.5-pro',
+  'opencode/gemini-2.0-flash',
+  'opencode/gemini-1.5-flash',
   'minimax-m2.5',
   'minimax-m2.1',
   'glm-5',
@@ -43,6 +45,23 @@ export class OpenCodeProvider extends OpenAICompatibleProvider {
   ): Promise<{ content: string; toolCalls?: import('./types.js').ToolCall[] }> {
     this.validateModel();
 
+    const payload: any = {
+      model: this.model,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      max_tokens: 8096,
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools = tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.input_schema
+        }
+      }));
+    }
+
     // Standard openai-compatible fetch, but using Token auth instead of Bearer
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -50,11 +69,7 @@ export class OpenCodeProvider extends OpenAICompatibleProvider {
         'Content-Type': 'application/json',
         Authorization: `Token ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.model,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        max_tokens: 8096,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (response.status === 401) {
@@ -71,11 +86,26 @@ export class OpenCodeProvider extends OpenAICompatibleProvider {
       throw new Error(`${this.name}: Request failed with status ${response.status}`);
     }
 
-    const data = (await response.json()) as {
-      choices: Array<{ message: { content: string | null } }>;
-    };
+    const data = (await response.json()) as any;
+    const message = data.choices[0]?.message;
+    const content = message?.content ?? '';
 
-    const content = data.choices[0]?.message?.content ?? '';
-    return { content, toolCalls: undefined };
+    let parsedToolCalls: import('./types.js').ToolCall[] | undefined;
+    if (message?.tool_calls && Array.isArray(message.tool_calls)) {
+      parsedToolCalls = message.tool_calls
+        .filter((tc: any) => tc.type === 'function')
+        .map((tc: any) => {
+          let input = {};
+          try {
+            input = JSON.parse(tc.function.arguments);
+          } catch (e) { }
+          return {
+            name: tc.function.name,
+            input
+          };
+        });
+    }
+
+    return { content, toolCalls: parsedToolCalls };
   }
 }

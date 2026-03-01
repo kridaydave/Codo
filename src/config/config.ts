@@ -24,6 +24,8 @@ const PROVIDER_DEFAULTS: Record<string, string> = {
   moonshot: 'moonshot-v1-8k',
   ollama: 'llama3',
   opencode: 'minimax-m2.5',
+  groq: 'llama3-70b-8192',
+  openrouter: 'anthropic/claude-3.5-sonnet',
 };
 
 let cachedConfig: CodoConfig | null = null;
@@ -85,10 +87,10 @@ export async function loadConfig(): Promise<CodoConfig> {
     }
   }
 
-  const validProviders = ['anthropic', 'gemini', 'google', 'openai', 'moonshot', 'ollama', 'opencode'];
+  const validProviders = ['anthropic', 'gemini', 'google', 'openai', 'moonshot', 'ollama', 'opencode', 'groq', 'openrouter'];
   if (config.provider && !validProviders.includes(config.provider)) {
     console.log(
-      `✗ Unknown provider: ${config.provider}. Supported: anthropic, gemini, openai, moonshot, ollama, opencode`,
+      `✗ Unknown provider: ${config.provider}. Supported: anthropic, gemini, openai, moonshot, ollama, opencode, groq, openrouter`,
     );
     process.exit(1);
   }

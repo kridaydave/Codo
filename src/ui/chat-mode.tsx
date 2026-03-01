@@ -60,8 +60,10 @@ export function ChatMode({ messages, inputValue, onChange, onSubmit, model, isCo
     const providerOptions = [
         { label: 'Anthropic (Claude Max or API key)', value: 'anthropic' },
         { label: 'OpenAI (ChatGPT Plus/Pro or API key)', value: 'openai' },
-        { label: 'Google (Gemini 2.5 Flash/Pro)', value: 'google' },
+        { label: 'Google (Gemini 1.5/2.0/2.5)', value: 'google' },
         { label: 'OpenCode (MiniMax or other Models)', value: 'opencode' },
+        { label: 'Groq (Llama 3, Mixtral)', value: 'groq' },
+        { label: 'OpenRouter (Claude, GPT-4o, etc)', value: 'openrouter' },
         { label: 'Moonshot (Kimi Models)', value: 'moonshot' },
         { label: 'Ollama (Local Models)', value: 'ollama' }
     ];

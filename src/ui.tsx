@@ -46,7 +46,7 @@ export default function App({ task: initialTask, provider }: AppProps) {
 
     const onAction = (action: string) => {
       setLogs((prev) => [...prev, action]);
-      setTokens((t) => t + Math.floor(Math.random() * 50) + 10); // Dummy token usage for now
+      setTokens((t) => t + Math.floor(Math.random() * 50) + 10);
       setSessionCost((c) => c + 0.001);
     };
 
@@ -64,7 +64,23 @@ export default function App({ task: initialTask, provider }: AppProps) {
     orchestrator.on('agent:tool_result', onToolResult);
 
     if (initialTask && mode === 'task') {
-      orchestrator.runTask(initialTask).catch(() => { });
+      setChatMessages((prev) => [...prev, { role: 'user', content: initialTask }]);
+      orchestrator
+        .runTask(initialTask)
+        .then((res) => {
+          setChatMessages((prev) => [
+            ...prev,
+            { role: 'assistant', content: `Task completed. Result:\n${res}` },
+          ]);
+          setMode('chat');
+        })
+        .catch((err) => {
+          setChatMessages((prev) => [
+            ...prev,
+            { role: 'assistant', content: `Task failed: ${err.message}` },
+          ]);
+          setMode('chat');
+        });
     }
 
     return () => {
@@ -74,6 +90,26 @@ export default function App({ task: initialTask, provider }: AppProps) {
       orchestrator.removeListener('agent:tool_result', onToolResult);
     };
   }, [provider, initialTask]);
+
+  useEffect(() => {
+    if (mode === 'task' && (agentState.status === 'done' || agentState.status === 'error')) {
+      const duration =
+        agentState.endTime && agentState.startTime
+          ? `${((agentState.endTime - agentState.startTime) / 1000).toFixed(1)}s`
+          : '';
+
+      let summary = `Task completed in ${duration}\n\n`;
+
+      if (agentState.status === 'error') {
+        summary = `Task failed: ${orchestrator.lastTaskError || 'Unknown error'}`;
+      } else if (orchestrator.lastTaskResult) {
+        summary = `Task completed successfully in ${duration}\n\n${orchestrator.lastTaskResult}`;
+      }
+
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: summary }]);
+      setMode('chat');
+    }
+  }, [agentState.status]);
 
   useInput((input, key) => {
     // Intercept escape key during connection flow to cancel
@@ -108,10 +144,7 @@ export default function App({ task: initialTask, provider }: AppProps) {
       setPendingProvider(null);
 
       // Mask the API key in the UI for security
-      setChatMessages((prev) => [
-        ...prev,
-        { role: 'user', content: '********' }
-      ]);
+      setChatMessages((prev) => [...prev, { role: 'user', content: '********' }]);
 
       try {
         const newConfig = await updateProviderApiKey(provider as any, input);
@@ -140,14 +173,17 @@ export default function App({ task: initialTask, provider }: AppProps) {
       // If no arguments, open the interactive menu
       if (parts.length === 1 && parts[0] === '') {
         setIsConnecting(true);
-        setChatMessages((prev) => [
-          ...prev,
-          { role: 'user', content: '/connect' }
-        ]);
+        setChatMessages((prev) => [...prev, { role: 'user', content: '/connect' }]);
         return;
       }
 
-      const provider = parts[0] as 'anthropic' | 'gemini' | 'moonshot' | 'opencode';
+      const provider = parts[0] as
+        | 'anthropic'
+        | 'gemini'
+        | 'moonshot'
+        | 'opencode'
+        | 'groq'
+        | 'openrouter';
       const apiKey = parts.slice(1).join(' ');
 
       if (!provider || !apiKey) {
@@ -162,13 +198,16 @@ export default function App({ task: initialTask, provider }: AppProps) {
         return;
       }
 
-      if (!['anthropic', 'gemini', 'moonshot', 'opencode'].includes(provider)) {
+      if (
+        !['anthropic', 'gemini', 'moonshot', 'opencode', 'groq', 'openrouter'].includes(provider)
+      ) {
         setChatMessages((prev) => [
           ...prev,
           { role: 'user', content: input },
           {
             role: 'assistant',
-            content: 'Invalid provider. Supported: anthropic, gemini, moonshot, opencode',
+            content:
+              'Invalid provider. Supported: anthropic, gemini, moonshot, opencode, groq, openrouter',
           },
         ]);
         return;
@@ -202,7 +241,7 @@ export default function App({ task: initialTask, provider }: AppProps) {
 
       const modelOptions: Record<string, string[]> = {
         anthropic: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-        gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+        gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'],
         moonshot: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
         ollama: ['llama3', 'llama3.1', 'llama3.2', 'mistral', 'codellama', 'phi3'],
         opencode: [
@@ -213,6 +252,16 @@ export default function App({ task: initialTask, provider }: AppProps) {
           'opencode/gpt-5.2',
           'opencode/claude-3.5-sonnet',
         ],
+        groq: [
+          'llama-3.3-70b-versatile',
+          'llama-3.1-8b-instant',
+          'llama3-8b-8192',
+          'llama3-70b-8192',
+          'mixtral-8x7b-32768',
+          'gemma-7b-it',
+          'gemma2-9b-it',
+        ],
+        openrouter: ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'google/gemini-2.5-pro'],
       };
 
       const currentProvider = currentConfig?.provider || 'gemini';
@@ -256,21 +305,20 @@ export default function App({ task: initialTask, provider }: AppProps) {
 
     setInputValue('');
 
-    setChatMessages((prev) => [
-      ...prev,
-      { role: 'user', content: input },
-    ]);
+    setChatMessages((prev) => [...prev, { role: 'user', content: input }]);
 
     try {
-      const { isTask, response } = await processChatInput(input, currentConfig?.provider || provider, chatMessages);
+      const { isTask, response } = await processChatInput(
+        input,
+        currentConfig?.provider || provider,
+        chatMessages,
+      );
 
-      setChatMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: response },
-      ]);
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: response }]);
 
       if (isTask) {
         setMode('task');
+        setLogs([]);
         orchestrator.runTask(input).catch(() => { });
       }
     } catch (err: any) {
@@ -302,7 +350,10 @@ export default function App({ task: initialTask, provider }: AppProps) {
         <Text color="#32CD32" bold>
           Welcome to
         </Text>
-        <Text color="white" bold> Codo Code</Text>
+        <Text color="white" bold>
+          {' '}
+          Codo Code
+        </Text>
         <Text color="white">!</Text>
       </Box>
       <Box marginTop={1} flexDirection="row" width="100%">
@@ -312,27 +363,45 @@ export default function App({ task: initialTask, provider }: AppProps) {
           <Text color="#32CD32">{'<                        >)'}</Text>
           <Text color="#32CD32">{' |                         | '}</Text>
           <Text color="#32CD32">{'  \\._                   _./  '}</Text>
-          <Text color="#32CD32">{'     ```--. . , ; .--\'\'\'       '}</Text>
+          <Text color="#32CD32">{"     ```--. . , ; .--'''       "}</Text>
           <Text color="#32CD32">{'           | |   |             '}</Text>
           <Text color="#32CD32">{'        .-=||  | |=-.        '}</Text>
-          <Text color="#32CD32">{'        `-=#$%&%$#=-\'        '}</Text>
+          <Text color="#32CD32">{"        `-=#$%&%$#=-'        "}</Text>
           <Text color="#32CD32">{'           | ;  :|           '}</Text>
           <Text color="#32CD32">{'  _____.,-#%&$@%#&#~,._____  '}</Text>
 
           <Box marginTop={1} flexDirection="column">
-            <Text color="gray">v1.2.0 · {currentConfig?.provider || provider}/{currentConfig?.model || ''}</Text>
+            <Text color="gray">
+              v1.2.0 · {currentConfig?.provider || provider}/{currentConfig?.model || ''}
+            </Text>
             <Text color="gray">{process.cwd()}</Text>
           </Box>
         </Box>
 
-        <Box flexDirection="column" width="50%" paddingLeft={2} borderStyle="single" borderLeft borderColor="#333333" borderRight={false} borderTop={false} borderBottom={false}>
-          <Text color="#32CD32" bold>Tips for getting started</Text>
+        <Box
+          flexDirection="column"
+          width="50%"
+          paddingLeft={2}
+          borderStyle="single"
+          borderLeft
+          borderColor="#333333"
+          borderRight={false}
+          borderTop={false}
+          borderBottom={false}
+        >
+          <Text color="#32CD32" bold>
+            Tips for getting started
+          </Text>
           <Text color="white">Run /connect to connect to an API provider</Text>
           <Text color="white">Run /model to select a specific model</Text>
-          <Text color="white">Be as specific as you would with another engineer for the best results</Text>
+          <Text color="white">
+            Be as specific as you would with another engineer for the best results
+          </Text>
 
           <Box marginTop={1} flexDirection="column">
-            <Text color="#32CD32" bold>Recent activity</Text>
+            <Text color="#32CD32" bold>
+              Recent activity
+            </Text>
             <Text color="gray">No recent activity</Text>
           </Box>
         </Box>

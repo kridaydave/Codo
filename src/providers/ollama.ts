@@ -62,14 +62,27 @@ export class OllamaProvider implements LLMProvider {
     }
 
     try {
+      const payload: any = {
+        model: this.model,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        stream: false,
+      };
+
+      if (tools && tools.length > 0) {
+        payload.tools = tools.map(t => ({
+          type: 'function',
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.input_schema
+          }
+        }));
+      }
+
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.model,
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
-          stream: false,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -77,9 +90,28 @@ export class OllamaProvider implements LLMProvider {
       }
 
       const data = await response.json();
-      const content = data.message?.content || '';
+      const message = data.message;
+      const content = message?.content || '';
 
-      return { content, toolCalls: undefined };
+      let parsedToolCalls: ToolCall[] | undefined;
+      if (message?.tool_calls && Array.isArray(message.tool_calls)) {
+        parsedToolCalls = message.tool_calls
+          .filter((tc: any) => tc.function)
+          .map((tc: any) => {
+            let input = {};
+            if (typeof tc.function.arguments === 'string') {
+              try { input = JSON.parse(tc.function.arguments); } catch (e) { }
+            } else if (typeof tc.function.arguments === 'object') {
+              input = tc.function.arguments;
+            }
+            return {
+              name: tc.function.name,
+              input
+            };
+          });
+      }
+
+      return { content, toolCalls: parsedToolCalls };
     } catch (error: any) {
       if (
         error.message === 'Connection refused' ||

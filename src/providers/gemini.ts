@@ -3,6 +3,8 @@ import { LLMProvider, Message, ToolInput, ToolCall } from './types.js';
 const SUPPORTED_MODELS = [
   'gemini-2.5-pro',
   'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
 ];
 
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
@@ -27,9 +29,25 @@ export class GeminiProvider implements LLMProvider {
   ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
     const mappedMessages = this.mapMessages(messages);
 
-    const body = {
+    const body: Record<string, unknown> = {
       contents: mappedMessages,
     };
+
+    if (tools.length > 0) {
+      body.tools = tools.map((tool) => ({
+        functionDeclarations: [
+          {
+            name: tool.name,
+            description: tool.description,
+            parameters: {
+              type: 'object',
+              properties: tool.input_schema.properties || {},
+              required: tool.input_schema.required || [],
+            },
+          },
+        ],
+      }));
+    }
 
     let lastError: Error | null = null;
     const maxRetries = 3;
@@ -81,9 +99,22 @@ export class GeminiProvider implements LLMProvider {
         }
 
         const data = await response.json();
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        let content = '';
+        const toolCalls: ToolCall[] = [];
 
-        return { content, toolCalls: undefined };
+        for (const part of parts) {
+          if (part.text) {
+            content += part.text;
+          } else if (part.functionCall) {
+            toolCalls.push({
+              name: part.functionCall.name,
+              input: part.functionCall.args || {},
+            });
+          }
+        }
+
+        return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes('Rate limit') || error.message.includes('429')) {

@@ -22,17 +22,30 @@ export class MoonshotProvider implements LLMProvider {
     messages: Message[],
     tools: ToolInput[],
   ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+    const payload: any = {
+      model: this.model,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      max_tokens: 8096,
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools = tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.input_schema
+        }
+      }));
+    }
+
     const response = await fetch(BASE_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.model,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        max_tokens: 8096,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (response.status === 401) {
@@ -48,15 +61,29 @@ export class MoonshotProvider implements LLMProvider {
       throw new Error(`Moonshot: ${response.status}`);
     }
 
-    const data = (await response.json()) as {
-      choices: Array<{ message: { content: string } }>;
-    };
+    const data = (await response.json()) as any;
+    const message = data.choices[0]?.message;
+    const content = message?.content ?? '';
 
-    const content = data.choices[0]?.message?.content ?? '';
+    let parsedToolCalls: ToolCall[] | undefined;
+    if (message?.tool_calls && Array.isArray(message.tool_calls)) {
+      parsedToolCalls = message.tool_calls
+        .filter((tc: any) => tc.type === 'function')
+        .map((tc: any) => {
+          let input = {};
+          try {
+            input = JSON.parse(tc.function.arguments);
+          } catch (e) { }
+          return {
+            name: tc.function.name,
+            input
+          };
+        });
+    }
 
     return {
       content,
-      toolCalls: undefined,
+      toolCalls: parsedToolCalls,
     };
   }
 }
