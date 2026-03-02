@@ -46,8 +46,12 @@ export default function App({ task: initialTask, provider }: AppProps) {
 
     const onAction = (action: string) => {
       setLogs((prev) => [...prev, action]);
-      setTokens((t) => t + Math.floor(Math.random() * 50) + 10);
-      setSessionCost((c) => c + 0.001);
+    };
+
+    const onUsage = (usage: any) => {
+      setTokens((t) => t + usage.totalTokens);
+      // Rough estimation: $0.01 per 1k tokens
+      setSessionCost((c) => c + (usage.totalTokens / 1000) * 0.01);
     };
 
     const onToolCall = (tool: any) => {
@@ -60,6 +64,7 @@ export default function App({ task: initialTask, provider }: AppProps) {
 
     orchestrator.on('agent:state', onStateChange);
     orchestrator.on('agent:action', onAction);
+    orchestrator.on('agent:usage', onUsage);
     orchestrator.on('agent:tool_call', onToolCall);
     orchestrator.on('agent:tool_result', onToolResult);
 
@@ -86,6 +91,7 @@ export default function App({ task: initialTask, provider }: AppProps) {
     return () => {
       orchestrator.removeListener('agent:state', onStateChange);
       orchestrator.removeListener('agent:action', onAction);
+      orchestrator.removeListener('agent:usage', onUsage);
       orchestrator.removeListener('agent:tool_call', onToolCall);
       orchestrator.removeListener('agent:tool_result', onToolResult);
     };

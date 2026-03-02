@@ -5,6 +5,7 @@ import type { EventEmitter } from 'events';
 
 export interface AgentOptions {
   maxIterations?: number;
+  maxToolCallsPerIteration?: number;
   provider?: 'anthropic' | 'google' | 'openai' | 'ollama';
   emitter?: EventEmitter;
 }
@@ -19,16 +20,18 @@ export class Agent {
   private provider!: LLMProvider;
   private messages: Message[] = [];
   private maxIterations: number;
+  private maxToolCallsPerIteration: number;
   private steps: AgentStep[] = [];
   private emitter?: EventEmitter;
 
   constructor(options: AgentOptions = {}) {
-    this.maxIterations = options.maxIterations || 50;
+    this.maxIterations = options.maxIterations || 20;
+    this.maxToolCallsPerIteration = options.maxToolCallsPerIteration || 10;
     this.emitter = options.emitter;
   }
 
   async initialize(providerType?: 'anthropic' | 'google' | 'openai' | 'ollama'): Promise<void> {
-    this.provider = await createProvider(providerType as any || 'anthropic');
+    this.provider = await createProvider((providerType as any) || 'anthropic');
 
     // Initialize with system prompt
     this.messages = [
@@ -56,29 +59,38 @@ export class Agent {
       content: task,
     });
 
+    let consecutiveToolCallIterations = 0;
+
     for (let iteration = 0; iteration < this.maxIterations; iteration++) {
       this.emitAction('Thinking...');
 
       // Get response from LLM
       const response = await this.provider.sendMessage(this.messages, toolInputs);
 
+      // Emit usage if available
+      if (response.usage && this.emitter) {
+        this.emitter.emit('agent:usage', response.usage);
+      }
+
       // Add assistant message to conversation
       this.messages.push({
         role: 'assistant',
         content: response.content,
+        toolCalls: response.toolCalls,
       });
 
       const step: AgentStep = {
         thought: response.content,
+        toolCalls: response.toolCalls,
       };
 
       if (response.content) {
         this.emitAction(response.content.slice(0, 100).replace(/\n/g, ' '));
       }
 
-      // Check if task is complete
-      if (response.content.includes('TASK_COMPLETE')) {
-        const summary = response.content.replace('TASK_COMPLETE', '').trim();
+      // Check if task is complete via magic string in response content
+      if (response.content.toUpperCase().includes('TASK_COMPLETE')) {
+        const summary = response.content.replace(/TASK_COMPLETE/gi, '').trim();
         step.thought = summary;
         this.steps.push(step);
         return summary || 'Task completed successfully';
@@ -86,10 +98,17 @@ export class Agent {
 
       // Handle tool calls
       if (response.toolCalls && response.toolCalls.length > 0) {
-        step.toolCalls = response.toolCalls;
+        const toolCallsToExecute = response.toolCalls.slice(0, this.maxToolCallsPerIteration);
         step.toolResults = [];
 
-        for (const toolCall of response.toolCalls) {
+        if (response.toolCalls.length > this.maxToolCallsPerIteration) {
+          this.messages.push({
+            role: 'user',
+            content: `You have attempted to call ${response.toolCalls.length} tools, but only the first ${this.maxToolCallsPerIteration} will be executed. Please complete the task with these tools or let me know if you need help.`,
+          });
+        }
+
+        for (const toolCall of toolCallsToExecute) {
           if (this.emitter) {
             this.emitter.emit('agent:tool_call', toolCall);
             this.emitter.emit('agent:action', `Running tool ${toolCall.name}...`);
@@ -109,9 +128,18 @@ export class Agent {
 
           // Add tool result to conversation
           this.messages.push({
-            role: 'user',
-            content: `Tool ${toolCall.name} result: ${result}`,
+            role: 'tool',
+            content: result,
+            tool_call_id: toolCall.id,
+            name: toolCall.name,
           });
+
+          // Check if the tool was 'finish'
+          if (toolCall.name === 'finish' || result.startsWith('TASK_COMPLETE:')) {
+            const summary = (toolCall.input.summary as string) || result.replace('TASK_COMPLETE:', '').trim();
+            this.steps.push(step);
+            return summary || 'Task completed successfully';
+          }
         }
       }
 
@@ -119,11 +147,23 @@ export class Agent {
 
       // If no tool calls and no TASK_COMPLETE, we might be done
       if (!response.toolCalls || response.toolCalls.length === 0) {
-        if (response.content.length > 0 && !response.content.includes('TASK_COMPLETE')) {
+        consecutiveToolCallIterations = 0;
+        if (response.content.length > 0 && !response.content.toUpperCase().includes('TASK_COMPLETE')) {
           // Add a follow-up prompt
           this.messages.push({
             role: 'user',
-            content: 'Please continue or let me know if the task is complete.',
+            content: 'If the task is complete, please use the "finish" tool. Otherwise, continue with the next steps.',
+          });
+        }
+      } else {
+        consecutiveToolCallIterations++;
+        // After 3 consecutive iterations with tool calls, ask for confirmation
+        if (consecutiveToolCallIterations >= 3) {
+          consecutiveToolCallIterations = 0;
+          this.messages.push({
+            role: 'user',
+            content:
+              'You have made multiple tool calls without completing the task. Please either complete the task now or explain what you are stuck on.',
           });
         }
       }

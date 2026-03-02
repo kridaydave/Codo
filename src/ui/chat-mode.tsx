@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, Box, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import SelectInput from 'ink-select-input';
+import { TypingText } from './typing-text.js';
 
 export interface ChatMessage {
     role: 'user' | 'assistant';
@@ -83,15 +84,22 @@ export function ChatMode({ messages, inputValue, onChange, onSubmit, model, isCo
     return (
         <Box flexDirection="column">
             <Box flexDirection="column">
-                {messages.map((m, i) => (
-                    <Box key={i} flexDirection="column" marginBottom={1}>
-                        {m.role === 'user' ? (
-                            <Text><Text color="#32CD32">{'> '} </Text><Text>{m.content}</Text></Text>
-                        ) : (
-                            <Text>{m.content}</Text>
-                        )}
-                    </Box>
-                ))}
+                {messages.map((m, i) => {
+                    const isLast = i === messages.length - 1;
+                    return (
+                        <Box key={i} flexDirection="column" marginBottom={1}>
+                            {m.role === 'user' ? (
+                                <Box borderStyle="round" borderColor="#555" paddingX={1} marginTop={1}>
+                                    <Text color="white">{m.content}</Text>
+                                </Box>
+                            ) : (
+                                <Box paddingY={1}>
+                                    <TypingText text={m.content} animate={isLast} speed={5} />
+                                </Box>
+                            )}
+                        </Box>
+                    );
+                })}
             </Box>
 
             {!isConnecting && !isEnteringKey && (
@@ -131,9 +139,9 @@ export function ChatMode({ messages, inputValue, onChange, onSubmit, model, isCo
                     </Box>
                 </Box>
             ) : (
-                <Box>
+                <Box borderStyle="round" borderColor="#32CD32" paddingX={1} marginTop={1}>
                     <Box marginRight={1}>
-                        <Text color="#FFFFFF">{'>'}</Text>
+                        <Text color="#32CD32">✍ </Text>
                     </Box>
                     <TextInput value={inputValue} onChange={onChange} onSubmit={onSubmit} />
                 </Box>

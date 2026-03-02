@@ -21,7 +21,7 @@ export class AnthropicProvider implements LLMProvider {
   async sendMessage(
     messages: Message[],
     tools: ToolInput[],
-  ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+  ): Promise<{ content: string; toolCalls?: ToolCall[]; usage?: any }> {
     const systemMessages = messages.filter((m) => m.role === 'system');
     const nonSystemMessages = messages.filter((m) => m.role !== 'system');
 
@@ -46,15 +46,23 @@ export class AnthropicProvider implements LLMProvider {
         textContent += block.text;
       } else if (block.type === 'tool_use') {
         toolCalls.push({
+          id: block.id,
           name: block.name,
           input: block.input as Record<string, unknown>,
         });
       }
     }
 
+    const usage = {
+      promptTokens: response.usage.input_tokens,
+      completionTokens: response.usage.output_tokens,
+      totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+    };
+
     return {
       content: textContent,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      usage,
     };
   }
 }

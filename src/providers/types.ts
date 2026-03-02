@@ -1,6 +1,9 @@
 export interface Message {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  toolCalls?: ToolCall[];
+  tool_call_id?: string; // For OpenAI/Gemini tool results
+  name?: string; // For OpenAI tool results
 }
 
 export interface ToolInput {
@@ -10,6 +13,7 @@ export interface ToolInput {
 }
 
 export interface ToolCall {
+  id?: string;
   name: string;
   input: Record<string, unknown>;
 }
@@ -20,6 +24,12 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+export interface Usage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 export interface LLMProvider {
   name: string;
   sendMessage(
@@ -28,5 +38,6 @@ export interface LLMProvider {
   ): Promise<{
     content: string;
     toolCalls?: ToolCall[];
+    usage?: Usage;
   }>;
 }

@@ -55,7 +55,7 @@ export class OllamaProvider implements LLMProvider {
   async sendMessage(
     messages: Message[],
     tools: ToolInput[],
-  ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+  ): Promise<{ content: string; toolCalls?: ToolCall[]; usage?: any }> {
     if (!this.initialized) {
       await this.verifyConnection();
       this.initialized = true;
@@ -111,7 +111,13 @@ export class OllamaProvider implements LLMProvider {
           });
       }
 
-      return { content, toolCalls: parsedToolCalls };
+      const usage = {
+        promptTokens: data.prompt_eval_count || 0,
+        completionTokens: data.eval_count || 0,
+        totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+      };
+
+      return { content, toolCalls: parsedToolCalls, usage };
     } catch (error: any) {
       if (
         error.message === 'Connection refused' ||

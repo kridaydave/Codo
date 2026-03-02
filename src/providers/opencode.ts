@@ -42,7 +42,7 @@ export class OpenCodeProvider extends OpenAICompatibleProvider {
   async sendMessage(
     messages: import('./types.js').Message[],
     tools: import('./types.js').ToolInput[]
-  ): Promise<{ content: string; toolCalls?: import('./types.js').ToolCall[] }> {
+  ): Promise<{ content: string; toolCalls?: import('./types.js').ToolCall[]; usage?: any }> {
     this.validateModel();
 
     const payload: any = {
@@ -100,12 +100,21 @@ export class OpenCodeProvider extends OpenAICompatibleProvider {
             input = JSON.parse(tc.function.arguments);
           } catch (e) { }
           return {
+            id: tc.id,
             name: tc.function.name,
             input
           };
         });
     }
 
-    return { content, toolCalls: parsedToolCalls };
+    const usage = data.usage
+      ? {
+          promptTokens: data.usage.prompt_tokens || 0,
+          completionTokens: data.usage.completion_tokens || 0,
+          totalTokens: data.usage.total_tokens || 0,
+        }
+      : undefined;
+
+    return { content, toolCalls: parsedToolCalls, usage };
   }
 }

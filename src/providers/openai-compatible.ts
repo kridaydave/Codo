@@ -27,7 +27,7 @@ export abstract class OpenAICompatibleProvider implements LLMProvider {
   async sendMessage(
     messages: Message[],
     tools: ToolInput[],
-  ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+  ): Promise<{ content: string; toolCalls?: ToolCall[]; usage?: any }> {
     this.validateModel();
 
     const payload: any = {
@@ -83,12 +83,21 @@ export abstract class OpenAICompatibleProvider implements LLMProvider {
             input = JSON.parse(tc.function.arguments);
           } catch (e) { }
           return {
+            id: tc.id,
             name: tc.function.name,
             input
           };
         });
     }
 
-    return { content, toolCalls: parsedToolCalls };
+    const usage = data.usage
+      ? {
+        promptTokens: data.usage.prompt_tokens || 0,
+        completionTokens: data.usage.completion_tokens || 0,
+        totalTokens: data.usage.total_tokens || 0,
+      }
+      : undefined;
+
+    return { content, toolCalls: parsedToolCalls, usage };
   }
 }

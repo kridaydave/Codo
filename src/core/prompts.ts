@@ -26,8 +26,9 @@ You have access to the following tools:
 - run_command: Execute shell commands
 - list_files: List all files in a directory recursively
 - search_in_file: Search for text patterns in files
+- finish: Signal that the task is complete and provide a summary
 
-IMPORTANT: When you have completed the task, respond with "TASK_COMPLETE" followed by a summary of what you did.`;
+IMPORTANT: When you have completed the task, you MUST call the "finish" tool with a summary of what you did. This is the only way to signal that you are done.`;
 
 export const TOOL_DESCRIPTIONS = `You can call these tools to help complete the user's request:
 
@@ -44,4 +45,7 @@ export const TOOL_DESCRIPTIONS = `You can call these tools to help complete the 
    Parameters: path (string) - directory path
 
 5. search_in_file - Search for text in files
-   Parameters: pattern (string), path (string - directory to search), regex (boolean)`;
+   Parameters: pattern (string), path (string - directory to search), regex (boolean)
+
+6. finish - Signal completion of the task
+   Parameters: summary (string) - A brief summary of what was accomplished`;

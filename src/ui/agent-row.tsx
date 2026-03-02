@@ -51,7 +51,7 @@ export const AgentRow = React.memo(({ state }: AgentRowProps) => {
                 {state.status === 'stuck' && <Text color="yellow">  ⚠</Text>}
             </Box>
             <Box paddingLeft={4}>
-                <Text color="gray" dimColor>↳ {state.currentAction}</Text>
+                <Text color="gray" dimColor wrap="truncate">↳ {state.currentAction}</Text>
             </Box>
         </Box>
     );

@@ -26,7 +26,7 @@ export class GeminiProvider implements LLMProvider {
   async sendMessage(
     messages: Message[],
     tools: ToolInput[],
-  ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+  ): Promise<{ content: string; toolCalls?: ToolCall[]; usage?: any }> {
     const mappedMessages = this.mapMessages(messages);
 
     const body: Record<string, unknown> = {
@@ -114,7 +114,15 @@ export class GeminiProvider implements LLMProvider {
           }
         }
 
-        return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
+        const usage = data.usageMetadata
+          ? {
+            promptTokens: data.usageMetadata.promptTokenCount || 0,
+            completionTokens: data.usageMetadata.candidatesTokenCount || 0,
+            totalTokens: data.usageMetadata.totalTokenCount || 0,
+          }
+          : undefined;
+
+        return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
       } catch (error) {
         if (error instanceof Error) {
           if (error.message.includes('Rate limit') || error.message.includes('429')) {

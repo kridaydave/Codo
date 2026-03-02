@@ -3,6 +3,7 @@ import { writeFileTool, writeFileExecute } from './write_file.js';
 import { runCommandTool, runCommandExecute } from './run_command.js';
 import { listFilesTool, listFilesExecute } from './list_files.js';
 import { searchInFileTool, searchInFileExecute } from './search_in_file.js';
+import { finishTool, finishExecute } from './finish.js';
 import type { ToolInput } from '../providers/types.js';
 
 export const tools = [
@@ -11,6 +12,7 @@ export const tools = [
   runCommandTool,
   listFilesTool,
   searchInFileTool,
+  finishTool,
 ] as const;
 
 export const toolInputs: ToolInput[] = tools.map((tool) => ({
@@ -34,9 +36,11 @@ export async function executeTool(
       return listFilesExecute(input as { path?: string });
     case 'search_in_file':
       return searchInFileExecute(input as { pattern: string; path?: string; regex?: boolean });
+    case 'finish':
+      return finishExecute(input as { summary: string });
     default:
       return `Unknown tool: ${name}`;
   }
 }
 
-export { readFileTool, writeFileTool, runCommandTool, listFilesTool, searchInFileTool };
+export { readFileTool, writeFileTool, runCommandTool, listFilesTool, searchInFileTool, finishTool };

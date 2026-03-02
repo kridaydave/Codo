@@ -25,12 +25,12 @@ export function LiveOutput({ agentId, logs }: LiveOutputProps) {
             </Box>
             <Box flexDirection="column" minHeight={6} paddingLeft={2}>
                 {displayLogs.length === 0 ? (
-                    <Box><Text color="gray" dimColor>{blink ? '◎' : ' '}  </Text><Text color="white">Thinking...</Text></Box>
+                    <Box><Text color="gray" dimColor>{blink ? '◎' : ' '}  </Text><Text color="white" wrap="truncate">Thinking...</Text></Box>
                 ) : (
                     displayLogs.map((log, i) => {
                         const isLastThinking = log === 'Thinking...' || log.startsWith('Running tool...');
                         if (isLastThinking) {
-                            return <Box key={i}><Text color="gray" dimColor>{blink ? '◎' : ' '}  </Text><Text color="white">{log}</Text></Box>;
+                            return <Box key={i}><Text color="gray" dimColor>{blink ? '◎' : ' '}  </Text><Text color="white" wrap="truncate">{log}</Text></Box>;
                         }
 
                         if (log.startsWith('✎')) {
@@ -42,8 +42,8 @@ export function LiveOutput({ agentId, logs }: LiveOutputProps) {
                                 return (
                                     <Box key={i}>
                                         <Text color="gray" dimColor>✎  </Text>
-                                        <Text color="gray" dimColor>{toolName.padEnd(14)}</Text>
-                                        <Text color="white"> {rest}</Text>
+                                        <Text color="gray" dimColor wrap="truncate">{toolName.padEnd(14)}</Text>
+                                        <Text color="white" wrap="truncate"> {rest}</Text>
                                     </Box>
                                 );
                             }
@@ -53,7 +53,7 @@ export function LiveOutput({ agentId, logs }: LiveOutputProps) {
                             return (
                                 <Box key={i}>
                                     <Text color="gray" dimColor>✎  </Text>
-                                    <Text color="gray" dimColor>{toolName.padEnd(14)}</Text>
+                                    <Text color="gray" dimColor wrap="truncate">{toolName.padEnd(14)}</Text>
                                     <Text color="green"> ✓</Text>
                                 </Box>
                             );
@@ -61,14 +61,14 @@ export function LiveOutput({ agentId, logs }: LiveOutputProps) {
                         return (
                             <Box key={i}>
                                 <Text color="gray" dimColor>◎  </Text>
-                                <Text color="white">{log.substring(0, 70)}</Text>
+                                <Text color="white" wrap="truncate">{log}</Text>
                             </Box>
                         );
                     })
                 )}
                 {/* Fill remaining lines */}
                 {Array.from({ length: Math.max(0, 6 - displayLogs.length) }).map((_, i) => (
-                    <Text key={`empty-${i}`}> </Text>
+                    <Box key={`empty-box-${i}`}><Text key={`empty-${i}`}>{"\u00A0"}</Text></Box>
                 ))}
             </Box>
         </Box>

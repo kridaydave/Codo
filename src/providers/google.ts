@@ -53,6 +53,7 @@ export class GoogleProvider implements LLMProvider {
   ): Promise<{
     content: string;
     toolCalls?: ToolCall[];
+    usage?: any;
   }> {
     const model = this.client.getGenerativeModel({
       model: 'gemini-2.5-flash',
@@ -126,9 +127,18 @@ export class GoogleProvider implements LLMProvider {
       }
     }
 
+    const usage = response.usageMetadata
+      ? {
+          promptTokens: response.usageMetadata.promptTokenCount || 0,
+          completionTokens: response.usageMetadata.candidatesTokenCount || 0,
+          totalTokens: response.usageMetadata.totalTokenCount || 0,
+        }
+      : undefined;
+
     return {
       content: textContent,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      usage,
     };
   }
 }
