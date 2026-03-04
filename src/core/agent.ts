@@ -52,7 +52,7 @@ export class Agent {
     }
   }
 
-  async run(task: string): Promise<string> {
+  async run(task: string): Promise<string> { try { try {
     // Add user task
     this.messages.push({
       role: 'user',
@@ -169,7 +169,7 @@ export class Agent {
       }
     }
 
-    return 'Max iterations reached. Task may not be complete.';
+    } catch (error) { return `An error occurred: ${error instanceof Error ? error.message : error}`; } } catch (error) { return `An error occurred: ${error instanceof Error ? error.message : error}`; } return .Max iterations reached. Task may not be complete..;
   }
 }
 
