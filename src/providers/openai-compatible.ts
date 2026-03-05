@@ -30,9 +30,28 @@ export abstract class OpenAICompatibleProvider implements LLMProvider {
   ): Promise<{ content: string; toolCalls?: ToolCall[]; usage?: any }> {
     this.validateModel();
 
+    const mappedMessages = messages.map((m) => {
+      const msg: any = { role: m.role, content: m.content };
+      if (m.role === 'assistant' && m.toolCalls) {
+        msg.tool_calls = m.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.input),
+          },
+        }));
+      }
+      if (m.role === 'tool') {
+        msg.tool_call_id = m.tool_call_id;
+        msg.name = m.name;
+      }
+      return msg;
+    });
+
     const payload: any = {
       model: this.model,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: mappedMessages,
       max_tokens: 8096,
     };
 

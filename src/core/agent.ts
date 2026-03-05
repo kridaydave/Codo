@@ -167,6 +167,7 @@ export class Agent {
   private steps: AgentStep[] = [];
   private emitter?: EventEmitter;
   private worktreeDir?: string;
+  private operatingDir?: string;
   private contextManager!: ContextManager;
   private providerType?: ProviderType;
 
@@ -180,8 +181,9 @@ export class Agent {
   }
 
   /** Set the worktree directory for tool isolation. Used by the orchestrator. */
-  setWorktreeDir(dir: string): void {
+  setWorktreeDir(dir: string, operatingDir?: string): void {
     this.worktreeDir = dir;
+    this.operatingDir = operatingDir;
   }
 
   async initialize(providerType?: ProviderType): Promise<void> {
@@ -380,7 +382,7 @@ export class Agent {
 
           let result: string;
           try {
-            result = await executeTool(toolCall.name, toolCall.input, this.worktreeDir);
+            result = await executeTool(toolCall.name, toolCall.input, this.worktreeDir, this.operatingDir);
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             const errorType = error instanceof Error ? error.constructor.name : 'UnknownError';

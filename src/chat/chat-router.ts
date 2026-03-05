@@ -17,7 +17,7 @@ const TASK_SUBJECTS = [
   'file', 'function', 'class', 'component', 'module', 'api', 'endpoint', 'route',
   'database', 'db', 'table', 'schema', 'model', 'controller', 'service',
   'test', 'spec', 'page', 'config', 'package', 'dependency',
-  'bug', 'error', 'issue', 'feature',
+  'bug', 'error', 'issue', 'feature', 'website', 'app', 'ui', 'code', 'logic',
   '.ts', '.js', '.tsx', '.jsx', '.py', '.json', '.css', '.html', '.md',
 ];
 
@@ -108,18 +108,57 @@ export async function processChatInput(
 
     const systemPrompt = `You are Codo, a coding CLI assistant.
 Determine if the user's message is:
-- A TASK: a request to actively change, create, or interact with files/code → start your reply with "[TASK]"
+- A TASK: a request to actively change, create, or interact with files/code (e.g. "Create a file", "Run a command", "Fix the bug", "Make the app functional") → start your reply with "[TASK]"
 - CHAT: a question, explanation request, or general conversation → answer directly without "[TASK]"
 
+You have access to tools. In CHAT mode, you may ONLY use read-only tools (read_file, list_files, list_directory, search_in_file) to inspect the workspace and answer questions. You CANNOT use write_file or run_command in CHAT mode.
+
+If the user wants you to perform any changes or execute code, you MUST classify it as a TASK by starting your response with [TASK].
 Be concise. For CHAT responses, keep answers under 3 sentences.`;
 
-    const messages = [
+    const messages: any[] = [
       { role: 'system' as const, content: systemPrompt },
       ...history.slice(-6).map((m) => ({ role: m.role, content: m.content })),
       { role: 'user' as const, content: trimmed },
     ];
 
-    const result = await provider.sendMessage(messages, toolInputs);
+    let result = await provider.sendMessage(messages, toolInputs);
+    let iterations = 0;
+
+    while (result.toolCalls && result.toolCalls.length > 0 && iterations < 5) {
+      iterations++;
+
+      messages.push({
+        role: 'assistant',
+        content: result.content || '',
+        toolCalls: result.toolCalls.map(tc => ({
+          id: tc.id,
+          name: tc.name,
+          input: tc.input
+        }))
+      });
+
+      const { executeTool } = await import('../tools/index.js');
+
+      for (const tc of result.toolCalls) {
+        let toolResult: string;
+        if (['read_file', 'list_files', 'list_directory', 'search_in_file'].includes(tc.name)) {
+          toolResult = await executeTool(tc.name, tc.input);
+        } else {
+          toolResult = `Error: Tool '${tc.name}' is only allowed in TASK mode. You are currently in CHAT mode. If you need to use this tool, please respond with [TASK] first.`;
+        }
+
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          name: tc.name,
+          content: toolResult
+        });
+      }
+
+      result = await provider.sendMessage(messages, toolInputs);
+    }
+
     const content = result.content.trim();
 
     if (content.startsWith('[TASK]')) {

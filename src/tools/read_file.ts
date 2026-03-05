@@ -57,13 +57,15 @@ export const readFileTool = {
 
 export async function readFileExecute(input: { path: string }): Promise<string> {
   try {
-    const workingDir = process.env.AGENT_WORKTREE_PATH || process.cwd();
+    const sandboxDir = process.env.AGENT_WORKTREE_PATH || process.cwd();
+    const workingDir = process.env.AGENT_OPERATING_DIR || sandboxDir;
+
     const resolvedPath = resolve(workingDir, input.path);
     const normalizedResolved = resolvedPath.replace(/\\/g, '/');
-    const normalizedWorkingDir = workingDir.replace(/\\/g, '/');
+    const normalizedSandbox = sandboxDir.replace(/\\/g, '/');
 
-    if (!normalizedResolved.startsWith(normalizedWorkingDir + '/')) {
-      return 'Error: Access denied. Path traversal detected. File must be within the working directory.';
+    if (!normalizedResolved.startsWith(normalizedSandbox + '/')) {
+      return 'Error: Access denied. Path traversal detected. File must be within the project sandbox.';
     }
 
     if (isSensitivePath(resolvedPath)) {

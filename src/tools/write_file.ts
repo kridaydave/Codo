@@ -22,16 +22,18 @@ export const writeFileTool = {
 
 export async function writeFileExecute(input: { path: string; content: string }): Promise<string> {
   try {
-    const allowedDir = process.env.AGENT_WORKTREE_PATH || process.cwd();
-    const resolvedPath = resolve(allowedDir, input.path);
+    const sandboxDir = process.env.AGENT_WORKTREE_PATH || process.cwd();
+    const workingDir = process.env.AGENT_OPERATING_DIR || sandboxDir;
+
+    const resolvedPath = resolve(workingDir, input.path);
     const normalizedResolved = resolvedPath.replace(/\\/g, '/').toLowerCase();
-    const normalizedAllowed = allowedDir.replace(/\\/g, '/').toLowerCase();
+    const normalizedSandbox = sandboxDir.replace(/\\/g, '/').toLowerCase();
 
     if (
-      !normalizedResolved.startsWith(normalizedAllowed + '/') &&
-      normalizedResolved !== normalizedAllowed
+      !normalizedResolved.startsWith(normalizedSandbox + '/') &&
+      normalizedResolved !== normalizedSandbox
     ) {
-      return `Error: Path traversal detected. Writing outside the allowed directory is not permitted.`;
+      return `Error: Path traversal detected. Writing outside the project sandbox is not permitted.`;
     }
 
     const sensitivePaths = [

@@ -148,7 +148,9 @@ export async function searchInFileExecute(input: {
       }
     }
 
-    const basePath = process.cwd();
+    const sandboxDir = process.env.AGENT_WORKTREE_PATH || process.cwd();
+    const basePath = process.env.AGENT_OPERATING_DIR || sandboxDir;
+
     const searchPath = input.path ? resolve(basePath, input.path) : basePath;
 
     const results: string[] = [];

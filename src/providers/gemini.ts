@@ -140,8 +140,8 @@ export class GeminiProvider implements LLMProvider {
 
   private mapMessages(
     messages: Message[],
-  ): Array<{ role: string; parts: Array<{ text: string }> }> {
-    const mapped: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+  ): Array<{ role: string; parts: Array<any> }> {
+    const mapped: Array<{ role: string; parts: Array<any> }> = [];
     let systemMessage = '';
 
     for (const msg of messages) {
@@ -153,10 +153,48 @@ export class GeminiProvider implements LLMProvider {
           parts: [{ text: msg.content }],
         });
       } else if (msg.role === 'assistant') {
+        const parts: any[] = [];
+        if (msg.content) {
+          parts.push({ text: msg.content });
+        }
+        if (msg.toolCalls) {
+          for (const tc of msg.toolCalls) {
+            parts.push({
+              functionCall: {
+                name: tc.name,
+                args: tc.input,
+              },
+            });
+          }
+        }
         mapped.push({
           role: 'model',
-          parts: [{ text: msg.content }],
+          parts,
         });
+      } else if (msg.role === 'tool') {
+        // Find the matching tool call in history to get the name
+        // (Gemini requires the name in functionResponse)
+        const name = msg.name || 'unknown'; 
+        
+        const lastMsg = mapped[mapped.length - 1];
+        if (lastMsg && lastMsg.role === 'user' && lastMsg.parts[0]?.functionResponse) {
+          lastMsg.parts.push({
+            functionResponse: {
+              name: name,
+              response: { content: msg.content },
+            },
+          });
+        } else {
+          mapped.push({
+            role: 'user',
+            parts: [{
+              functionResponse: {
+                name: name,
+                response: { content: msg.content },
+              },
+            }],
+          });
+        }
       }
     }
 

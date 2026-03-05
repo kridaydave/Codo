@@ -52,7 +52,8 @@ async function getAllFiles(dirPath: string, basePath: string): Promise<string[]>
 
 export async function listFilesExecute(input: { path?: string }): Promise<string> {
   try {
-    const basePath = process.env.AGENT_WORKTREE_PATH || process.cwd();
+    const sandboxDir = process.env.AGENT_WORKTREE_PATH || process.cwd();
+    const basePath = process.env.AGENT_OPERATING_DIR || sandboxDir;
     const searchPath = input.path ? resolve(basePath, input.path) : basePath;
 
     const files = await getAllFiles(searchPath, basePath);

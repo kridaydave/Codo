@@ -416,7 +416,7 @@ export class Orchestrator extends EventEmitter {
       this.emit('agent:action', `[${agentId}] Worktree → ${worktree.branch}`);
 
       // Use public method instead of private property hack
-      agent.setWorktreeDir(worktree.path);
+      agent.setWorktreeDir(worktree.path, worktree.operatingPath);
 
       this.updateAgentState(agentId, { status: 'running', currentAction: 'Running task...' });
       const result = await agent.run(task, this.abortController?.signal);

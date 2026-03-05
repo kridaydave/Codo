@@ -16,6 +16,7 @@ export interface Worktree {
   id: string;
   branch: string;
   path: string;
+  operatingPath: string;
   rootPath: string;
   status: 'pending' | 'active' | 'merged' | 'aborted';
   createdAt: Date;
@@ -107,10 +108,14 @@ export class WorktreeManager {
       throw new Error(`Failed to create worktree: ${msg}`);
     }
 
+    const relativeOffset = require('path').relative(this.repoRoot, this.operatingDir);
+    const operatingPath = require('path').resolve(worktreePath, relativeOffset);
+
     const worktree: Worktree = {
       id: `${agentId}-${timestamp}`,
       branch: branchName,
       path: worktreePath,
+      operatingPath,
       rootPath: worktreePath,
       status: 'active',
       createdAt: new Date(),
