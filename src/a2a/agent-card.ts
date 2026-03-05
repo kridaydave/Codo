@@ -42,6 +42,24 @@ export interface A2ATask {
 }
 
 /**
+ * A2A Message — represents a single communication between agents.
+ */
+export interface A2AMessage {
+    /** Unique message ID */
+    id: string;
+    /** Sender agent ID */
+    from: string;
+    /** Recipient agent ID (or 'broadcast' for all) */
+    to: string | 'broadcast';
+    /** The message content */
+    content: string;
+    /** Optional context summary for token optimization */
+    contextSummary?: string;
+    /** Timestamp */
+    timestamp: number;
+}
+
+/**
  * Create a default Agent Card for a given agent ID and provider.
  */
 export function createAgentCard(id: string, model: string): AgentCard {

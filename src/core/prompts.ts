@@ -47,7 +47,10 @@ export const TOOL_DESCRIPTIONS = `You can call these tools to help complete the 
 5. search_in_file - Search for text in files
    Parameters: pattern (string), path (string - directory to search), regex (boolean)
 
-6. finish - Signal completion of the task
+6. ask_agent - Ask another agent a question (Prep phase, logs to bus)
+   Parameters: targetAgentId (string), query (string)
+
+7. finish - Signal completion of the task
    Parameters: summary (string) - A brief summary of what was accomplished`;
 
 export const SUB_AGENT_PROMPT = `You are a specialized developer sub-agent.

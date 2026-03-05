@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import type { AgentCard, A2ATask } from './agent-card.js';
+import type { AgentCard, A2ATask, A2AMessage } from './agent-card.js';
 
 export type TaskBusEvent =
     | { type: 'task:submitted'; task: A2ATask }
@@ -8,7 +8,10 @@ export type TaskBusEvent =
     | { type: 'task:failed'; taskId: string; agentId: string; error: string }
     | { type: 'task:cancelled'; taskId: string }
     | { type: 'agent:registered'; card: AgentCard }
-    | { type: 'agent:status'; agentId: string; status: AgentCard['status'] };
+    | { type: 'agent:status'; agentId: string; status: AgentCard['status'] }
+    | { type: 'message:broadcast'; message: A2AMessage }
+    | { type: 'message:direct'; message: A2AMessage }
+    | { type: 'context:updated'; key: string; value: string };
 
 /**
  * In-process A2A Task Bus.
@@ -22,6 +25,8 @@ export type TaskBusEvent =
 export class TaskBus extends EventEmitter {
     private agents: Map<string, AgentCard> = new Map();
     private tasks: Map<string, A2ATask> = new Map();
+    private messages: A2AMessage[] = [];
+    private _sharedContext: Map<string, string> = new Map();
 
     /** Register an agent with its capabilities. */
     registerAgent(card: AgentCard): void {
@@ -100,6 +105,53 @@ export class TaskBus extends EventEmitter {
                 this.tasks.delete(id);
             }
         }
+    }
+
+    // --- Messaging (A2A Prep) ---
+
+    /** Broadcast a message to all agents. */
+    broadcastMessage(message: Omit<A2AMessage, 'id' | 'timestamp'>): void {
+        const fullMessage: A2AMessage = {
+            ...message,
+            id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            timestamp: Date.now(),
+        };
+        this.messages.push(fullMessage);
+        this.emit('bus', { type: 'message:broadcast', message: fullMessage });
+    }
+
+    /** Send a direct message to a specific agent. */
+    sendDirectMessage(message: Omit<A2AMessage, 'id' | 'timestamp'>): void {
+        const fullMessage: A2AMessage = {
+            ...message,
+            id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            timestamp: Date.now(),
+        };
+        this.messages.push(fullMessage);
+        this.emit('bus', { type: 'message:direct', message: fullMessage });
+    }
+
+    /** Get recent messages for an agent. */
+    getMessagesFor(agentId: string): A2AMessage[] {
+        return this.messages.filter((m) => m.to === 'broadcast' || m.to === agentId);
+    }
+
+    // --- Shared Context (Blackboard Pattern) ---
+
+    /** Write to the shared knowledge blackboard. */
+    writeSharedContext(key: string, value: string): void {
+        this._sharedContext.set(key, value);
+        this.emit('bus', { type: 'context:updated', key, value });
+    }
+
+    /** Read from the shared knowledge blackboard. */
+    readSharedContext(key: string): string | undefined {
+        return this._sharedContext.get(key);
+    }
+
+    /** Get the entire shared blackboard state. */
+    get sharedContext(): Record<string, string> {
+        return Object.fromEntries(this._sharedContext.entries());
     }
 }
 

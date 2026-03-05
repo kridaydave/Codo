@@ -5,6 +5,7 @@ import { listFilesTool, listFilesExecute } from './list_files.js';
 import { listDirectoryTool, listDirectoryExecute } from './list_directory.js';
 import { searchInFileTool, searchInFileExecute } from './search_in_file.js';
 import { finishTool, finishExecute } from './finish.js';
+import { askAgentTool, askAgentExecute } from './ask_agent.js';
 import type { ToolInput } from '../providers/types.js';
 
 export const tools = [
@@ -14,6 +15,7 @@ export const tools = [
   listFilesTool,
   listDirectoryTool,
   searchInFileTool,
+  askAgentTool,
   finishTool,
 ] as const;
 
@@ -62,6 +64,8 @@ export async function executeTool(
         return listDirectoryExecute(input as { path?: string });
       case 'search_in_file':
         return searchInFileExecute(input as { pattern: string; path?: string; regex?: boolean });
+      case 'ask_agent':
+        return askAgentExecute(input as { targetAgentId: string; query: string });
       case 'finish':
         return finishExecute(input as { summary: string });
       default:
@@ -90,5 +94,5 @@ export async function executeTool(
   }
 }
 
-export { readFileTool, writeFileTool, runCommandTool, listFilesTool, listDirectoryTool, searchInFileTool, finishTool };
-export { readFileExecute, writeFileExecute, runCommandExecute, listFilesExecute, listDirectoryExecute, searchInFileExecute, finishExecute };
+export { readFileTool, writeFileTool, runCommandTool, listFilesTool, listDirectoryTool, searchInFileTool, askAgentTool, finishTool };
+export { readFileExecute, writeFileExecute, runCommandExecute, listFilesExecute, listDirectoryExecute, searchInFileExecute, askAgentExecute, finishExecute };

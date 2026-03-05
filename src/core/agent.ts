@@ -8,9 +8,11 @@ import {
 import { toolInputs, executeTool } from '../tools/index.js';
 import { SYSTEM_PROMPT, SUB_AGENT_PROMPT, TOOL_DESCRIPTIONS } from './prompts.js';
 import { ContextManager } from './context-manager.js';
+import { BaseAgent } from '../agents/BaseAgent.js';
 import type { EventEmitter } from 'events';
 
 export interface AgentOptions {
+  agentId?: string;
   maxIterations?: number;
   maxToolCallsPerIteration?: number;
   maxMessages?: number;
@@ -159,7 +161,7 @@ async function sendMessageWithRetry(
   }
 }
 
-export class Agent {
+export class Agent extends BaseAgent {
   private provider!: LLMProvider;
   private messages: Message[] = [];
   private maxIterations: number;
@@ -174,6 +176,15 @@ export class Agent {
   private role: 'primary' | 'sub-agent';
 
   constructor(options: AgentOptions = {}) {
+    const aId = options.agentId || 'agent-1';
+    super({
+      agentId: aId,
+      name: `Codo ${aId}`,
+      description: 'General-purpose coding agent',
+      skills: ['write_code', 'run_tests', 'lint'],
+      endpoint: `agent://${aId}`,
+      version: '1.0'
+    });
     this.maxIterations = options.maxIterations || 20;
     this.maxToolCallsPerIteration = options.maxToolCallsPerIteration || 10;
     this.maxMessages = options.maxMessages || 100;
@@ -181,6 +192,14 @@ export class Agent {
     this.worktreeDir = options.worktreeDir;
     this.providerType = options.provider;
     this.role = options.role || 'primary';
+  }
+
+  onContextReady(contextId: string, payload: Record<string, unknown>): void {
+    // Inject the shared context into messages so the agent has it
+    this.messages.push({
+      role: 'user',
+      content: `[Upstream Context Received]:\n${JSON.stringify(this.sharedContext, null, 2)}`
+    });
   }
 
   /** Set the worktree directory for tool isolation. Used by the orchestrator. */
@@ -362,6 +381,7 @@ export class Agent {
         const summary = response.content.replace(/TASK_COMPLETE/gi, '').trim();
         step.thought = summary;
         this.steps.push(step);
+        this.broadcastMessage('task_done', { summary });
         return summary || 'Task completed successfully';
       }
 
@@ -447,6 +467,7 @@ export class Agent {
                 ? inputSummary
                 : result.replace('TASK_COMPLETE:', '').trim();
             this.steps.push(step);
+            this.broadcastMessage('task_done', { summary });
             return summary || 'Task completed successfully';
           }
         }

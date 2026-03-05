@@ -51,4 +51,47 @@ Please provide the optimized task description for the sub-agent.`;
             return `Context: ${originalTask}\n\nTask: ${subtask}`;
         }
     }
+
+    /**
+     * Optimizes an inter-agent query based on the target agent's advertised capabilities.
+     * This prepares for A2A communication where agents query each other.
+     */
+    static async optimizeQuery(
+        query: string,
+        targetAgentCapability: string,
+        providerType: ProviderType
+    ): Promise<string> {
+        if (query.length < 100) {
+            return query; // Too short to warrant optimization latency
+        }
+
+        try {
+            const provider = await createProvider(providerType);
+
+            const systemPrompt = `You are an AI query optimizer for an Agent-to-Agent (A2A) network.
+Your goal is to parse a raw 'Query' from one agent and rewrite it to be as concise, direct, and token-efficient as possible, specifically tailored for the 'Target Agent Capability'.
+Drop conversational filler, greetings, and redundant context. Output ONLY the optimized query.`;
+
+            const userMessage = `Raw Query:
+${query}
+
+Target Agent Capability:
+${targetAgentCapability}
+
+Please provide the optimized query for the target agent.`;
+
+            const response = await provider.sendMessage(
+                [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userMessage }
+                ],
+                []
+            );
+
+            const optimized = response.content.trim();
+            return optimized || query;
+        } catch (error) {
+            return query; // Fallback strictly to original query
+        }
+    }
 }

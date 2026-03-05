@@ -3,7 +3,7 @@ import { Text, Box, useInput, useApp } from 'ink';
 import { ChatMode, type ChatMessage } from './ui/chat-mode.js';
 import { AgentRow } from './ui/agent-row.js';
 import { LiveOutput } from './ui/live-output.js';
-import { A2ALog } from './ui/a2a-log.js';
+import { A2AFeed } from './ui/A2AFeed.js';
 import { StatusBar } from './ui/status-bar.js';
 import { ResumePrompt, type CheckpointOffer } from './ui/resume-prompt.js';
 import { processChatInput } from './chat/chat-router.js';
@@ -604,7 +604,7 @@ export default function App({ task: initialTask, provider }: AppProps) {
           ) : (
             <LiveOutput agentId={agentState.id} logs={logs} />
           )}
-          <A2ALog messages={a2aMessages} />
+          <A2AFeed />
           <StatusBar tokensUsed={tokens} cost={sessionCost} status={agentState.status} />
         </Box>
       )}

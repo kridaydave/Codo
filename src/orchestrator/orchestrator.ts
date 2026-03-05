@@ -1,10 +1,12 @@
 import { EventEmitter } from 'events';
+import { BaseAgent } from '../agents/BaseAgent.js';
 import { createAgent, Agent } from '../core/agent.js';
 import { CheckpointManager } from '../core/checkpoint-manager.js';
 import { WorktreeManager, DiffGenerator } from '../git/index.js';
 import { ApprovalFlow } from './approval-flow.js';
 import { decomposeTasks } from './task-decomposer.js';
 import { taskBus, createAgentCard, createTaskId } from '../a2a/index.js';
+import { A2ABus } from '../a2a/bus.js';
 import { historyManager } from '../core/history-manager.js';
 import { TokenOptimizer } from './token-optimizer.js';
 import type { Worktree, DiffResult } from '../git/index.js';
@@ -20,7 +22,7 @@ export interface AgentState {
   subtask?: string;
 }
 
-export class Orchestrator extends EventEmitter {
+export class Orchestrator extends BaseAgent {
   // Agent pool
   private agents: Map<string, Agent> = new Map();
   private agentStates: Map<string, AgentState> = new Map();
@@ -51,7 +53,14 @@ export class Orchestrator extends EventEmitter {
   private currentTaskId: string | null = null;
 
   constructor() {
-    super();
+    super({
+      agentId: 'orchestrator',
+      name: 'Orchestrator',
+      description: 'Coordinates tasks',
+      skills: [],
+      endpoint: 'agent://orchestrator',
+      version: '1.0'
+    });
     this.worktreeManager = new WorktreeManager();
     this.diffGenerator = new DiffGenerator();
     this.approvalFlow = new ApprovalFlow();
@@ -66,7 +75,38 @@ export class Orchestrator extends EventEmitter {
     process.on('SIGINT', () => this.cleanupOnExit());
     process.on('SIGTERM', () => this.cleanupOnExit());
     process.on('exit', () => this.cleanupOnExit());
+
+    // Intercept A2A broadcast to trigger handoffs between sequential agents
+    A2ABus.on('broadcast', (envelope) => {
+      if (envelope.params.from === this.agentId) return;
+
+      if (envelope.method === 'task_done' && envelope.params.from.startsWith('agent-')) {
+        const fromId = envelope.params.from;
+        const match = fromId.match(/agent-(\d+)/);
+        if (match) {
+          const nextIdx = parseInt(match[1], 10) + 1;
+          const nextAgentId = `agent-${nextIdx}`;
+
+          // If the next agent exists in our subtask pool, forward the context and trigger it
+          if (this.agents.has(nextAgentId)) {
+            const payload = envelope.params.payload;
+            const contextId = envelope.params.contextId;
+
+            this.sendMessage(nextAgentId, 'context_share', payload, contextId);
+            this.sendMessage(nextAgentId, 'task_done', { ready: true, contextId }, contextId);
+          }
+        }
+      }
+    });
   }
+
+  onContextReady(contextId: string, payload: Record<string, unknown>): void {
+    // Orchestrator handles A2A via the generic broadcast listener above.
+  }  // Let's rely on standard events if we can. Actually Orchestrator has all agents in this.agents map
+  // When 'agent1' emits 'task_done', it goes to broadcast or to 'orchestrator'.
+  // We can just add another listener in constructor:
+  // Note: For now we'll handle the requirement directly in the next chunk.
+
 
   async initialize(provider: ProviderType = 'anthropic', maxAgents: number = 4) {
     this.currentProvider = provider;
@@ -263,6 +303,13 @@ export class Orchestrator extends EventEmitter {
     );
 
     const agentIds: string[] = [];
+
+    // Broadcast the full global plan so that agents are aware of each other's tasks
+    this.broadcastMessage('context_share', {
+      globalTask: originalTask,
+      totalAgents: subtasks.length,
+      plan: subtasks.map((task, i) => ({ agent: `agent-${i + 1}`, task }))
+    });
 
     for (let i = 0; i < subtasks.length; i++) {
       const agentId = `agent-${i + 1}`;
