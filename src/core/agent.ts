@@ -6,7 +6,7 @@ import {
   ToolCall,
 } from '../providers/index.js';
 import { toolInputs, executeTool } from '../tools/index.js';
-import { SYSTEM_PROMPT, TOOL_DESCRIPTIONS } from './prompts.js';
+import { SYSTEM_PROMPT, SUB_AGENT_PROMPT, TOOL_DESCRIPTIONS } from './prompts.js';
 import { ContextManager } from './context-manager.js';
 import type { EventEmitter } from 'events';
 
@@ -17,6 +17,7 @@ export interface AgentOptions {
   provider?: ProviderType;
   emitter?: EventEmitter;
   worktreeDir?: string; // isolates file ops to this directory
+  role?: 'primary' | 'sub-agent';
 }
 
 export interface AgentStep {
@@ -170,6 +171,7 @@ export class Agent {
   private operatingDir?: string;
   private contextManager!: ContextManager;
   private providerType?: ProviderType;
+  private role: 'primary' | 'sub-agent';
 
   constructor(options: AgentOptions = {}) {
     this.maxIterations = options.maxIterations || 20;
@@ -178,6 +180,7 @@ export class Agent {
     this.emitter = options.emitter;
     this.worktreeDir = options.worktreeDir;
     this.providerType = options.provider;
+    this.role = options.role || 'primary';
   }
 
   /** Set the worktree directory for tool isolation. Used by the orchestrator. */
@@ -191,11 +194,12 @@ export class Agent {
     this.provider = await createProvider(resolvedProvider);
     this.contextManager = new ContextManager(resolvedProvider);
 
+    const systemPrompt = this.role === 'sub-agent' ? SUB_AGENT_PROMPT : SYSTEM_PROMPT;
     // Initialize with system prompt
     this.messages = [
       {
         role: 'system',
-        content: `${SYSTEM_PROMPT}\n\n${TOOL_DESCRIPTIONS}`,
+        content: `${systemPrompt}\n\n${TOOL_DESCRIPTIONS}`,
       },
     ];
   }
@@ -211,10 +215,11 @@ export class Agent {
 
   /** Reset the agent's memory for a new task. */
   reset(): void {
+    const systemPrompt = this.role === 'sub-agent' ? SUB_AGENT_PROMPT : SYSTEM_PROMPT;
     this.messages = [
       {
         role: 'system',
-        content: `${SYSTEM_PROMPT}\n\n${TOOL_DESCRIPTIONS}`,
+        content: `${systemPrompt}\n\n${TOOL_DESCRIPTIONS}`,
       },
     ];
     this.steps = [];

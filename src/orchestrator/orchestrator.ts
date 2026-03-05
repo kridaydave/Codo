@@ -6,6 +6,7 @@ import { ApprovalFlow } from './approval-flow.js';
 import { decomposeTasks } from './task-decomposer.js';
 import { taskBus, createAgentCard, createTaskId } from '../a2a/index.js';
 import { historyManager } from '../core/history-manager.js';
+import { TokenOptimizer } from './token-optimizer.js';
 import type { Worktree, DiffResult } from '../git/index.js';
 import type { ProviderType } from '../providers/index.js';
 
@@ -250,6 +251,17 @@ export class Orchestrator extends EventEmitter {
     originalTask: string,
     subtasks: string[],
   ): Promise<string | undefined> {
+    this.updateAgentState('agent-1', {
+      status: 'running',
+      currentAction: 'Optimizing task context...',
+    });
+
+    const optimizedSubtasks = await Promise.all(
+      subtasks.map((subtask) =>
+        TokenOptimizer.optimizeDelegation(originalTask, subtask, this.currentProvider)
+      )
+    );
+
     const agentIds: string[] = [];
 
     for (let i = 0; i < subtasks.length; i++) {
@@ -267,7 +279,7 @@ export class Orchestrator extends EventEmitter {
         agentEmitter.on(ev, (d: unknown) => this.emit(ev, d));
       });
 
-      const agent = await createAgent({ provider: this.currentProvider, emitter: agentEmitter });
+      const agent = await createAgent({ provider: this.currentProvider, emitter: agentEmitter, role: 'sub-agent' });
       this.agents.set(agentId, agent);
       taskBus.registerAgent(createAgentCard(agentId, this.currentProvider));
 
@@ -306,7 +318,7 @@ export class Orchestrator extends EventEmitter {
         return new Promise<string | undefined>((resolve, reject) => {
           setTimeout(() => {
             taskBus.reportWorking(taskId, agentId, 'Starting...');
-            this._runSingleAgent(agentId, subtask)
+            this._runSingleAgent(agentId, optimizedSubtasks[i])
               .then((res) => {
                 taskBus.reportCompleted(taskId, agentId, res ?? '');
                 resolve(res);
