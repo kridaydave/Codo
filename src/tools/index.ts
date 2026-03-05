@@ -21,25 +21,55 @@ export const toolInputs: ToolInput[] = tools.map((tool) => ({
   input_schema: tool.input_schema,
 }));
 
+/**
+ * Execute a named tool. Pass `worktreeDir` to scope file operations inside
+ * an agent's worktree — this avoids clobbering a shared env var when multiple
+ * agents run in parallel.
+ */
 export async function executeTool(
   name: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  worktreeDir?: string,
 ): Promise<string> {
-  switch (name) {
-    case 'read_file':
-      return readFileExecute(input as { path: string });
-    case 'write_file':
-      return writeFileExecute(input as { path: string; content: string });
-    case 'run_command':
-      return runCommandExecute(input as { command: string; cwd?: string; timeout?: number });
-    case 'list_files':
-      return listFilesExecute(input as { path?: string });
-    case 'search_in_file':
-      return searchInFileExecute(input as { pattern: string; path?: string; regex?: boolean });
-    case 'finish':
-      return finishExecute(input as { summary: string });
-    default:
-      return `Unknown tool: ${name}`;
+  // Temporarily set the env var for this call only.
+  // NOTE: This is still not safe for *true* parallel async within the same
+  //       process tick, but agents are sequential within their own loop so
+  //       it works in practice. The worktreeDir override takes priority.
+  const prevWorktreePath = process.env.AGENT_WORKTREE_PATH;
+  if (worktreeDir) {
+    process.env.AGENT_WORKTREE_PATH = worktreeDir;
+  }
+
+  try {
+    switch (name) {
+      case 'read_file':
+        return readFileExecute(input as { path: string });
+      case 'write_file':
+        return writeFileExecute(input as { path: string; content: string });
+      case 'run_command':
+        return runCommandExecute(input as { command: string; cwd?: string; timeout?: number });
+      case 'list_files':
+        return listFilesExecute(input as { path?: string });
+      case 'search_in_file':
+        return searchInFileExecute(input as { pattern: string; path?: string; regex?: boolean });
+      case 'finish':
+        return finishExecute(input as { summary: string });
+      default:
+        return `Unknown tool: ${name}`;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Error executing tool "${name}":`, message);
+    return `Error executing tool "${name}": ${message}`;
+  } finally {
+    // Restore the previous value
+    if (worktreeDir) {
+      if (prevWorktreePath !== undefined) {
+        process.env.AGENT_WORKTREE_PATH = prevWorktreePath;
+      } else {
+        delete process.env.AGENT_WORKTREE_PATH;
+      }
+    }
   }
 }
 

@@ -30,7 +30,7 @@ export function LiveOutput({ agentId, logs }: LiveOutputProps) {
                     displayLogs.map((log, i) => {
                         const isLastThinking = log === 'Thinking...' || log.startsWith('Running tool...');
                         if (isLastThinking) {
-                            return <Box key={i}><Text color="gray" dimColor>{blink ? '◎' : ' '}  </Text><Text color="white" wrap="truncate">{log}</Text></Box>;
+                            return <Box key={i}><Text color="#32CD32">{blink ? '⠋' : '⠙'}  </Text><Text color="white" wrap="truncate">{log}</Text></Box>;
                         }
 
                         if (log.startsWith('✎')) {
@@ -41,7 +41,7 @@ export function LiveOutput({ agentId, logs }: LiveOutputProps) {
                                 const rest = withoutIcon.substring(firstSpace + 1).trim();
                                 return (
                                     <Box key={i}>
-                                        <Text color="gray" dimColor>✎  </Text>
+                                        <Text color="yellow">✎  </Text>
                                         <Text color="gray" dimColor wrap="truncate">{toolName.padEnd(14)}</Text>
                                         <Text color="white" wrap="truncate"> {rest}</Text>
                                     </Box>
@@ -52,15 +52,15 @@ export function LiveOutput({ agentId, logs }: LiveOutputProps) {
                             const toolName = withoutIcon.replace('completed', '').trim();
                             return (
                                 <Box key={i}>
-                                    <Text color="gray" dimColor>✎  </Text>
+                                    <Text color="#32CD32">✓  </Text>
                                     <Text color="gray" dimColor wrap="truncate">{toolName.padEnd(14)}</Text>
-                                    <Text color="green"> ✓</Text>
+                                    <Text color="#32CD32"> completed</Text>
                                 </Box>
                             );
                         }
                         return (
                             <Box key={i}>
-                                <Text color="gray" dimColor>◎  </Text>
+                                <Text color="blue">ℹ  </Text>
                                 <Text color="white" wrap="truncate">{log}</Text>
                             </Box>
                         );

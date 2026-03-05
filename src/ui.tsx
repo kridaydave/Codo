@@ -5,9 +5,18 @@ import { AgentRow } from './ui/agent-row.js';
 import { LiveOutput } from './ui/live-output.js';
 import { A2ALog } from './ui/a2a-log.js';
 import { StatusBar } from './ui/status-bar.js';
+import { ResumePrompt, type CheckpointOffer } from './ui/resume-prompt.js';
 import { processChatInput } from './chat/chat-router.js';
-import { loadConfig, updateProviderApiKey, saveConfig } from './config/config.js';
+import {
+  loadConfig,
+  updateProviderApiKey,
+  saveConfig,
+  type ProviderType,
+} from './config/config.js';
 import { orchestrator, type AgentState } from './orchestrator/orchestrator.js';
+import { historyManager, type HistoryEntry } from './core/history-manager.js';
+import type { ApprovalRequest } from './orchestrator/approval-flow.js';
+import { DiffGenerator } from './git/index.js';
 
 interface AppProps {
   task: string;
@@ -24,20 +33,30 @@ export default function App({ task: initialTask, provider }: AppProps) {
   // Interactive connection state
   const [isConnecting, setIsConnecting] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<string | null>(null);
+  const [isSelectingModel, setIsSelectingModel] = useState(false);
 
   // Task state
   const [agentState, setAgentState] = useState<AgentState>(orchestrator.agentState);
+  const [agentStates, setAgentStates] = useState<AgentState[]>([orchestrator.agentState]);
+  const [a2aMessages, setA2AMessages] = useState<string[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
   const [tokens, setTokens] = useState(0);
   const [sessionCost, setSessionCost] = useState(0);
+  const [approvalRequest, setApprovalRequest] = useState<ApprovalRequest | null>(null);
+  const [checkpointOffer, setCheckpointOffer] = useState<CheckpointOffer | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [hasExited, setHasExited] = useState(false);
 
   useEffect(() => {
-    orchestrator.initialize(provider as any);
-
     (async () => {
       const cfg = await loadConfig();
       setCurrentConfig(cfg);
+      await orchestrator.initialize(
+        (cfg?.provider || provider) as ProviderType,
+        cfg?.maxAgents ?? 4,
+      );
+      const h = await historyManager.loadHistory();
+      setHistory(h);
     })();
 
     const onStateChange = (state: AgentState) => {
@@ -62,11 +81,45 @@ export default function App({ task: initialTask, provider }: AppProps) {
       setLogs((prev) => [...prev, `✓ ${res.tool} completed`]);
     };
 
+    const onApprovalRequest = (request: ApprovalRequest) => {
+      setApprovalRequest(request);
+    };
+
+    const onApprovalComplete = () => {
+      setApprovalRequest(null);
+    };
+
+    const onAllStatesChange = (states: AgentState[]) => {
+      setAgentStates([...states]);
+    };
+
+    const onA2ADelegation = (msg: {
+      from?: string;
+      to?: string[];
+      subtasks?: string[];
+      method?: string;
+    }) => {
+      if (!Array.isArray(msg.to) || !Array.isArray(msg.subtasks)) return; // guard against wrong-shape events
+      setA2AMessages((prev) => [
+        ...prev,
+        `[${msg.method ?? 'auto'}] → [${msg.to!.join(', ')}]: ${msg.subtasks!.length} subtasks`,
+      ]);
+    };
+
+    const onCheckpointFound = (offer: CheckpointOffer) => {
+      setCheckpointOffer(offer);
+    };
+
     orchestrator.on('agent:state', onStateChange);
+    orchestrator.on('agents:state', onAllStatesChange);
     orchestrator.on('agent:action', onAction);
     orchestrator.on('agent:usage', onUsage);
     orchestrator.on('agent:tool_call', onToolCall);
     orchestrator.on('agent:tool_result', onToolResult);
+    orchestrator.on('a2a:delegation', onA2ADelegation);
+    orchestrator.on('checkpoint:found', onCheckpointFound);
+    orchestrator.approvalFlow.on('approval:request', onApprovalRequest);
+    orchestrator.approvalFlow.on('approval:complete', onApprovalComplete);
 
     if (initialTask && mode === 'task') {
       setChatMessages((prev) => [...prev, { role: 'user', content: initialTask }]);
@@ -90,10 +143,15 @@ export default function App({ task: initialTask, provider }: AppProps) {
 
     return () => {
       orchestrator.removeListener('agent:state', onStateChange);
+      orchestrator.removeListener('agents:state', onAllStatesChange);
       orchestrator.removeListener('agent:action', onAction);
       orchestrator.removeListener('agent:usage', onUsage);
       orchestrator.removeListener('agent:tool_call', onToolCall);
       orchestrator.removeListener('agent:tool_result', onToolResult);
+      orchestrator.removeListener('a2a:delegation', onA2ADelegation);
+      orchestrator.removeListener('checkpoint:found', onCheckpointFound);
+      orchestrator.approvalFlow.removeListener('approval:request', onApprovalRequest);
+      orchestrator.approvalFlow.removeListener('approval:complete', onApprovalComplete);
     };
   }, [provider, initialTask]);
 
@@ -114,14 +172,39 @@ export default function App({ task: initialTask, provider }: AppProps) {
 
       setChatMessages((prev) => [...prev, { role: 'assistant', content: summary }]);
       setMode('chat');
+      historyManager.loadHistory().then(setHistory);
     }
   }, [agentState.status]);
 
   useInput((input, key) => {
+    // Block other shortcuts if we are showing a checkpoint prompt
+    if (checkpointOffer) {
+      return;
+    }
+
+    // Handle approval decisions
+    if (approvalRequest && agentState.status === 'awaiting_approval') {
+      if (input === 'm' || input === 'M') {
+        orchestrator.approvalFlow.submitDecision({ decision: 'merge' });
+        return;
+      }
+      if (input === 'c' || input === 'C') {
+        orchestrator.approvalFlow.submitDecision({ decision: 'cancel' });
+        return;
+      }
+      // Block other input during approval
+      return;
+    }
+
     // Intercept escape key during connection flow to cancel
     if (key.escape && isConnecting) {
       setIsConnecting(false);
       setPendingProvider(null);
+      return;
+    }
+
+    if (key.escape && isSelectingModel) {
+      setIsSelectingModel(false);
       return;
     }
 
@@ -136,6 +219,44 @@ export default function App({ task: initialTask, provider }: AppProps) {
   const handleProviderSelect = (selectedProvider: string) => {
     setPendingProvider(selectedProvider);
     setIsConnecting(false);
+  };
+
+  const modelOptionsMap: Record<string, string[]> = {
+    anthropic: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+    gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'],
+    moonshot: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+    ollama: ['llama3', 'llama3.1', 'llama3.2', 'mistral', 'codellama', 'phi3'],
+    opencode: [
+      'minimax-m2.5',
+      'minimax-m2.1',
+      'glm-5',
+      'kimi-k2.5',
+      'opencode/gpt-5.2',
+      'opencode/claude-3.5-sonnet',
+    ],
+    groq: [
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+      'llama3-8b-8192',
+      'llama3-70b-8192',
+      'mixtral-8x7b-32768',
+      'gemma-7b-it',
+      'gemma2-9b-it',
+    ],
+    openrouter: ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'google/gemini-2.5-pro'],
+  };
+
+  const handleModelSelect = async (selectedModel: string) => {
+    setIsSelectingModel(false);
+    const currentProvider = currentConfig?.provider || 'gemini';
+    const updatedConfig = { ...currentConfig, model: selectedModel };
+    await saveConfig(updatedConfig);
+    setCurrentConfig(updatedConfig);
+
+    setChatMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: `✓ Switched to ${currentProvider}/${selectedModel}` },
+    ]);
   };
 
   const handleChatSubmit = async (val: string) => {
@@ -245,43 +366,12 @@ export default function App({ task: initialTask, provider }: AppProps) {
       setInputValue('');
       const modelArg = input.slice(6).trim();
 
-      const modelOptions: Record<string, string[]> = {
-        anthropic: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-        gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'],
-        moonshot: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-        ollama: ['llama3', 'llama3.1', 'llama3.2', 'mistral', 'codellama', 'phi3'],
-        opencode: [
-          'minimax-m2.5',
-          'minimax-m2.1',
-          'glm-5',
-          'kimi-k2.5',
-          'opencode/gpt-5.2',
-          'opencode/claude-3.5-sonnet',
-        ],
-        groq: [
-          'llama-3.3-70b-versatile',
-          'llama-3.1-8b-instant',
-          'llama3-8b-8192',
-          'llama3-70b-8192',
-          'mixtral-8x7b-32768',
-          'gemma-7b-it',
-          'gemma2-9b-it',
-        ],
-        openrouter: ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'google/gemini-2.5-pro'],
-      };
-
       const currentProvider = currentConfig?.provider || 'gemini';
-      const availableModels = modelOptions[currentProvider] || [];
+      const availableModels = modelOptionsMap[currentProvider] || [];
 
       if (!modelArg) {
-        setChatMessages((prev) => [
-          ...prev,
-          { role: 'user', content: input },
-          {
-            role: 'assistant',
-            content: `Available models for ${currentProvider}:\n${availableModels.map((m) => `  • ${m}`).join('\n')}\n\nUse: /model <model-name>`,
-          },
-        ]);
+        setIsSelectingModel(true);
+        setChatMessages((prev) => [...prev, { role: 'user', content: '/model' }]);
         return;
       }
 
@@ -352,35 +442,37 @@ export default function App({ task: initialTask, provider }: AppProps) {
   // Header line
   const header = (
     <Box flexDirection="column" marginBottom={1} paddingX={1} paddingTop={1}>
-      <Box justifyContent="flex-start">
-        <Text color="#32CD32" bold>
-          Welcome to
-        </Text>
-        <Text color="white" bold>
-          {' '}
-          Codo Code
-        </Text>
-        <Text color="white">!</Text>
+      <Box justifyContent="space-between">
+        <Box flexDirection="row">
+          <Text color="#32CD32" bold>
+            Codo Code
+          </Text>
+          <Text color="gray"> · CLI Assistant v1.2.0</Text>
+        </Box>
+        <Text color="gray">{process.cwd()}</Text>
       </Box>
       <Box marginTop={1} flexDirection="row" width="100%">
         <Box flexDirection="column" width="50%">
-          <Text color="#32CD32">{'     _.-^^---....,,--       '}</Text>
-          <Text color="#32CD32">{' _--                  --_  '}</Text>
-          <Text color="#32CD32">{'<                        >)'}</Text>
-          <Text color="#32CD32">{' |                         | '}</Text>
-          <Text color="#32CD32">{'  \\._                   _./  '}</Text>
-          <Text color="#32CD32">{"     ```--. . , ; .--'''       "}</Text>
-          <Text color="#32CD32">{'           | |   |             '}</Text>
-          <Text color="#32CD32">{'        .-=||  | |=-.        '}</Text>
-          <Text color="#32CD32">{"        `-=#$%&%$#=-'        "}</Text>
-          <Text color="#32CD32">{'           | ;  :|           '}</Text>
-          <Text color="#32CD32">{'  _____.,-#%&$@%#&#~,._____  '}</Text>
+          <Text color="#32CD32" bold>
+            {'   ____ ___  ____  ____ '}
+          </Text>
+          <Text color="#32CD32" bold>
+            {'  / ___/ _ \\/ __ \\/ __ \\'}
+          </Text>
+          <Text color="#32CD32" bold>
+            {' / /  / (_) / /_/ / /_/ /'}
+          </Text>
+          <Text color="#32CD32" bold>
+            {' \\____\\___/\\____/\\____/ '}
+          </Text>
 
           <Box marginTop={1} flexDirection="column">
-            <Text color="gray">
-              v1.2.0 · {currentConfig?.provider || provider}/{currentConfig?.model || ''}
+            <Text color="white">
+              {currentConfig?.provider || provider || 'gemini'} / {currentConfig?.model || ''}
             </Text>
-            <Text color="gray">{process.cwd()}</Text>
+            <Text color="gray" dimColor>
+              System active · {agentStates.length} agents available
+            </Text>
           </Box>
         </Box>
 
@@ -408,7 +500,20 @@ export default function App({ task: initialTask, provider }: AppProps) {
             <Text color="#32CD32" bold>
               Recent activity
             </Text>
-            <Text color="gray">No recent activity</Text>
+            {history.length > 0 ? (
+              history.slice(0, 3).map((entry, idx) => (
+                <Box key={idx} flexDirection="column">
+                  <Text color="white" wrap="truncate-end">
+                    {entry.status === 'done' ? '✓' : '✗'} {entry.task.slice(0, 40)}
+                  </Text>
+                  <Text color="gray" dimColor>
+                    {new Date(entry.timestamp).toLocaleTimeString()} · {entry.duration ? (entry.duration / 1000).toFixed(1) : '?'}s
+                  </Text>
+                </Box>
+              ))
+            ) : (
+              <Text color="gray">No recent activity</Text>
+            )}
           </Box>
         </Box>
       </Box>
@@ -420,7 +525,25 @@ export default function App({ task: initialTask, provider }: AppProps) {
     <Box flexDirection="column" paddingX={1} width={100} borderStyle="round" borderColor="#32CD32">
       {header}
 
-      {mode === 'chat' ? (
+      {checkpointOffer ? (
+        <ResumePrompt
+          checkpoint={checkpointOffer}
+          onDecision={(decision) => {
+            if (decision === 'resume') {
+              setMode('task');
+              setLogs([]);
+              setChatMessages((prev) => [
+                ...prev,
+                { role: 'user', content: `[Resuming task: ${checkpointOffer.task.slice(0, 50)}...]` },
+              ]);
+              orchestrator.resumeFromCheckpoint(checkpointOffer.taskId).catch(() => { });
+            } else {
+              orchestrator.dismissCheckpoint(checkpointOffer.taskId).catch(() => { });
+            }
+            setCheckpointOffer(null);
+          }}
+        />
+      ) : mode === 'chat' ? (
         <ChatMode
           messages={chatMessages}
           inputValue={inputValue}
@@ -432,6 +555,11 @@ export default function App({ task: initialTask, provider }: AppProps) {
           onConnectCancel={() => setIsConnecting(false)}
           isEnteringKey={!!pendingProvider}
           pendingProviderName={pendingProvider || undefined}
+          isSelectingModel={isSelectingModel}
+          onModelSelect={handleModelSelect}
+          modelOptions={(modelOptionsMap[currentConfig?.provider || provider || 'gemini'] || []).map(
+            (m) => ({ label: m, value: m }),
+          )}
         />
       ) : (
         <Box flexDirection="column">
@@ -444,17 +572,40 @@ export default function App({ task: initialTask, provider }: AppProps) {
             </Text>
           </Box>
 
-          <AgentRow state={agentState} />
+          {/* Render one row per active agent */}
+          {agentStates.map((state) => (
+            <AgentRow key={state.id} state={state} />
+          ))}
 
-          <Box marginY={1} justifyContent="center" width={50}>
-            <Text color="gray" dimColor>
-              more agents coming in phase 4...
-            </Text>
-          </Box>
-
-          <LiveOutput agentId={agentState.id} logs={logs} />
-          <A2ALog />
-          <StatusBar tokensUsed={tokens} cost={sessionCost} />
+          {approvalRequest && agentState.status === 'awaiting_approval' ? (
+            <Box flexDirection="column" marginY={1} paddingX={1}>
+              <Text bold color="yellow">
+                ═══ Approval Required ═══════════════════════════
+              </Text>
+              <Box marginY={1} flexDirection="column">
+                <Text color="white">Task: {approvalRequest.task.slice(0, 80)}</Text>
+                <Text color="white">{new DiffGenerator().formatForUser(approvalRequest.diff)}</Text>
+                <Box marginTop={1}>
+                  <Text color="white">Agent summary: </Text>
+                  <Text color="gray">{approvalRequest.agentSummary.slice(0, 200)}</Text>
+                </Box>
+              </Box>
+              <Box marginTop={1}>
+                <Text color="#32CD32" bold>
+                  [M]
+                </Text>
+                <Text color="white">erge to main </Text>
+                <Text color="red" bold>
+                  [C]
+                </Text>
+                <Text color="white">ancel (discard)</Text>
+              </Box>
+            </Box>
+          ) : (
+            <LiveOutput agentId={agentState.id} logs={logs} />
+          )}
+          <A2ALog messages={a2aMessages} />
+          <StatusBar tokensUsed={tokens} cost={sessionCost} status={agentState.status} />
         </Box>
       )}
     </Box>

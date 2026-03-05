@@ -27,10 +27,20 @@ export const AgentRow = React.memo(({ state }: AgentRowProps) => {
             statusColor = 'green';
             statusText = 'RUNNING';
             break;
+        case 'awaiting_approval':
+            statusIcon = '⏳';
+            statusColor = 'yellow';
+            statusText = 'WAITING';
+            break;
         case 'done':
             statusIcon = '✅';
             statusColor = 'greenBright';
             statusText = 'DONE';
+            break;
+        case 'aborted':
+            statusIcon = '⛔';
+            statusColor = 'gray';
+            statusText = 'ABORTED';
             break;
         case 'stuck':
         case 'error':
@@ -53,6 +63,11 @@ export const AgentRow = React.memo(({ state }: AgentRowProps) => {
             <Box paddingLeft={4}>
                 <Text color="gray" dimColor wrap="truncate">↳ {state.currentAction}</Text>
             </Box>
+            {state.subtask && (
+                <Box paddingLeft={4}>
+                    <Text color="#555555" dimColor wrap="truncate">  {state.subtask.slice(0, 70)}</Text>
+                </Box>
+            )}
         </Box>
     );
 });

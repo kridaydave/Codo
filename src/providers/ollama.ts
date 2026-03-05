@@ -69,13 +69,13 @@ export class OllamaProvider implements LLMProvider {
       };
 
       if (tools && tools.length > 0) {
-        payload.tools = tools.map(t => ({
+        payload.tools = tools.map((t) => ({
           type: 'function',
           function: {
             name: t.name,
             description: t.description,
-            parameters: t.input_schema
-          }
+            parameters: t.input_schema,
+          },
         }));
       }
 
@@ -100,13 +100,18 @@ export class OllamaProvider implements LLMProvider {
           .map((tc: any) => {
             let input = {};
             if (typeof tc.function.arguments === 'string') {
-              try { input = JSON.parse(tc.function.arguments); } catch (e) { }
+              try {
+                input = JSON.parse(tc.function.arguments);
+              } catch (e) {
+                console.error('Failed to parse tool call arguments:', e);
+                input = { error: 'Failed to parse arguments' };
+              }
             } else if (typeof tc.function.arguments === 'object') {
               input = tc.function.arguments;
             }
             return {
               name: tc.function.name,
-              input
+              input,
             };
           });
       }

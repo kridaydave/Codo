@@ -37,13 +37,13 @@ export abstract class OpenAICompatibleProvider implements LLMProvider {
     };
 
     if (tools && tools.length > 0) {
-      payload.tools = tools.map(t => ({
+      payload.tools = tools.map((t) => ({
         type: 'function',
         function: {
           name: t.name,
           description: t.description,
-          parameters: t.input_schema
-        }
+          parameters: t.input_schema,
+        },
       }));
     }
 
@@ -63,7 +63,8 @@ export abstract class OpenAICompatibleProvider implements LLMProvider {
       throw new Error(`${this.name}: Rate limited`);
     }
     if (response.status === 400) {
-      throw new Error(`${this.name}: Bad request`);
+      const body = await response.text().catch(() => '');
+      throw new Error(`${this.name}: Bad request – ${body || 'no details'}`);
     }
     if (!response.ok) {
       throw new Error(`${this.name}: Request failed with status ${response.status}`);
@@ -78,24 +79,27 @@ export abstract class OpenAICompatibleProvider implements LLMProvider {
       parsedToolCalls = message.tool_calls
         .filter((tc: any) => tc.type === 'function')
         .map((tc: any) => {
-          let input = {};
+          let input;
           try {
             input = JSON.parse(tc.function.arguments);
-          } catch (e) { }
+          } catch (e) {
+            console.error('Failed to parse tool call arguments:', e);
+            input = { error: 'Failed to parse arguments' };
+          }
           return {
             id: tc.id,
             name: tc.function.name,
-            input
+            input,
           };
         });
     }
 
     const usage = data.usage
       ? {
-        promptTokens: data.usage.prompt_tokens || 0,
-        completionTokens: data.usage.completion_tokens || 0,
-        totalTokens: data.usage.total_tokens || 0,
-      }
+          promptTokens: data.usage.prompt_tokens || 0,
+          completionTokens: data.usage.completion_tokens || 0,
+          totalTokens: data.usage.total_tokens || 0,
+        }
       : undefined;
 
     return { content, toolCalls: parsedToolCalls, usage };

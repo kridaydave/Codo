@@ -1,7 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMProvider, Message, ToolInput, ToolCall } from './types.js';
 
-const SUPPORTED_MODELS = ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
+const SUPPORTED_MODEL_PREFIXES = [
+  'claude-opus',
+  'claude-sonnet',
+  'claude-haiku',
+  'claude-3-5-sonnet',
+  'claude-3-opus',
+  'claude-3-sonnet',
+  'claude-3-haiku',
+];
 
 export class AnthropicProvider implements LLMProvider {
   name = 'anthropic';
@@ -9,9 +17,10 @@ export class AnthropicProvider implements LLMProvider {
   private client: Anthropic;
 
   constructor(apiKey: string, model: string) {
-    if (!SUPPORTED_MODELS.includes(model)) {
-      throw new Error(
-        `Anthropic: Unsupported model '${model}'. Supported: ${SUPPORTED_MODELS.join(', ')}`,
+    const isSupported = SUPPORTED_MODEL_PREFIXES.some((prefix) => model.startsWith(prefix));
+    if (!isSupported) {
+      console.warn(
+        `Anthropic: Model '${model}' may not be supported. Known prefixes: ${SUPPORTED_MODEL_PREFIXES.join(', ')}`,
       );
     }
     this.model = model;

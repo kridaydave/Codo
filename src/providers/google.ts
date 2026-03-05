@@ -1,16 +1,19 @@
 import { GoogleGenerativeAI, Schema, SchemaType } from '@google/generative-ai';
 import { LLMProvider, Message, ToolInput, ToolCall } from './types.js';
-import { getApiKey } from '../core/config.js';
 
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn();
     } catch (error: any) {
-      if (error.message?.includes('429') || error.message?.includes('rate limit') || error.message?.includes(' quota')) {
+      if (
+        error.message?.includes('429') ||
+        error.message?.includes('rate limit') ||
+        error.message?.includes(' quota')
+      ) {
         const delay = Math.pow(2, i) * 2000;
-        console.log(`Rate limited, retrying in ${delay/1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        console.log(`Rate limited, retrying in ${delay / 1000}s...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
       } else {
         throw error;
       }
@@ -21,7 +24,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
 
 function convertToGoogleSchema(inputSchema: Record<string, unknown>): any {
   const properties: Record<string, any> = {};
-  
+
   if (inputSchema.properties && typeof inputSchema.properties === 'object') {
     const props = inputSchema.properties as Record<string, any>;
     for (const [key, prop] of Object.entries(props)) {
@@ -43,13 +46,13 @@ export class GoogleProvider implements LLMProvider {
   name = 'google';
   private client: GoogleGenerativeAI;
 
-  constructor(apiKey?: string) {
-    this.client = new GoogleGenerativeAI(apiKey || getApiKey('google'));
+  constructor(apiKey: string) {
+    this.client = new GoogleGenerativeAI(apiKey);
   }
 
   async sendMessage(
     messages: Message[],
-    tools: ToolInput[]
+    tools: ToolInput[],
   ): Promise<{
     content: string;
     toolCalls?: ToolCall[];
@@ -83,10 +86,10 @@ export class GoogleProvider implements LLMProvider {
     });
 
     const contents: { role: string; parts: { text: string }[] }[] = [];
-    
+
     for (const msg of filteredMessages) {
       const text = msg.content;
-      
+
       if (contents.length === 0 && systemPrompt) {
         contents.push({
           role: msg.role === 'assistant' ? 'model' : 'user',
@@ -100,9 +103,11 @@ export class GoogleProvider implements LLMProvider {
       }
     }
 
-    const result = await withRetry(() => model.generateContent({
-      contents,
-    }));
+    const result = await withRetry(() =>
+      model.generateContent({
+        contents,
+      }),
+    );
 
     const response = result.response;
     const candidates = response.candidates;

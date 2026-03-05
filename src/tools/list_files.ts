@@ -17,22 +17,22 @@ export const listFilesTool = {
 
 async function getAllFiles(dirPath: string, basePath: string): Promise<string[]> {
   const files: string[] = [];
-  
+
   try {
     const entries = await readdir(dirPath);
-    
+
     for (const entry of entries) {
       // Skip common ignored directories
       if (entry === 'node_modules' || entry === '.git' || entry === 'dist' || entry.startsWith('.')) {
         continue;
       }
-      
+
       const fullPath = join(dirPath, entry);
       const relativePath = relative(basePath, fullPath);
-      
+
       try {
         const stats = await stat(fullPath);
-        
+
         if (stats.isDirectory()) {
           const subFiles = await getAllFiles(fullPath, basePath);
           files.push(...subFiles);
@@ -46,21 +46,21 @@ async function getAllFiles(dirPath: string, basePath: string): Promise<string[]>
   } catch (error) {
     return [`Error listing files: ${error}`];
   }
-  
+
   return files;
 }
 
 export async function listFilesExecute(input: { path?: string }): Promise<string> {
   try {
-    const basePath = process.cwd();
+    const basePath = process.env.AGENT_WORKTREE_PATH || process.cwd();
     const searchPath = input.path ? resolve(basePath, input.path) : basePath;
-    
+
     const files = await getAllFiles(searchPath, basePath);
-    
+
     if (files.length === 0) {
       return 'No files found';
     }
-    
+
     return files.sort().join('\n');
   } catch (error) {
     return `Error listing files: ${error}`;

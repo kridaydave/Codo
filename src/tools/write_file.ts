@@ -22,12 +22,38 @@ export const writeFileTool = {
 
 export async function writeFileExecute(input: { path: string; content: string }): Promise<string> {
   try {
-    const resolvedPath = resolve(process.cwd(), input.path);
+    const allowedDir = process.env.AGENT_WORKTREE_PATH || process.cwd();
+    const resolvedPath = resolve(allowedDir, input.path);
+    const normalizedResolved = resolvedPath.replace(/\\/g, '/').toLowerCase();
+    const normalizedAllowed = allowedDir.replace(/\\/g, '/').toLowerCase();
+
+    if (
+      !normalizedResolved.startsWith(normalizedAllowed + '/') &&
+      normalizedResolved !== normalizedAllowed
+    ) {
+      return `Error: Path traversal detected. Writing outside the allowed directory is not permitted.`;
+    }
+
+    const sensitivePaths = [
+      '/etc/passwd',
+      '/etc/shadow',
+      '/etc/sudoers',
+      '/windows/system32',
+      '/windows/syswow64',
+      '/program files',
+      '/programdata',
+    ];
+    for (const sensitive of sensitivePaths) {
+      if (normalizedResolved.includes(sensitive)) {
+        return `Error: Cannot write to sensitive system path: ${input.path}`;
+      }
+    }
+
     const dir = dirname(resolvedPath);
-    
+
     await mkdir(dir, { recursive: true });
     await writeFile(resolvedPath, input.content, 'utf-8');
-    
+
     return `Successfully wrote to ${input.path}`;
   } catch (error) {
     return `Error writing file: ${error}`;

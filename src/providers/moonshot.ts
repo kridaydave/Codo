@@ -29,13 +29,13 @@ export class MoonshotProvider implements LLMProvider {
     };
 
     if (tools && tools.length > 0) {
-      payload.tools = tools.map(t => ({
+      payload.tools = tools.map((t) => ({
         type: 'function',
         function: {
           name: t.name,
           description: t.description,
-          parameters: t.input_schema
-        }
+          parameters: t.input_schema,
+        },
       }));
     }
 
@@ -70,14 +70,17 @@ export class MoonshotProvider implements LLMProvider {
       parsedToolCalls = message.tool_calls
         .filter((tc: any) => tc.type === 'function')
         .map((tc: any) => {
-          let input = {};
+          let input;
           try {
             input = JSON.parse(tc.function.arguments);
-          } catch (e) { }
+          } catch (e) {
+            console.error('Failed to parse tool call arguments:', e);
+            input = { error: 'Failed to parse arguments' };
+          }
           return {
             id: tc.id,
             name: tc.function.name,
-            input
+            input,
           };
         });
     }

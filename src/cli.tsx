@@ -3,9 +3,10 @@ import React from 'react';
 import { render } from 'ink';
 import meow from 'meow';
 import App from './ui.js';
-import { loadConfig } from './core/config.js';
+import { loadConfig } from './config/config.js';
 
-const cli = meow(`
+const cli = meow(
+  `
   Usage
     $ codo <task>
 
@@ -17,20 +18,22 @@ const cli = meow(`
     --provider, -p  Provider to use (anthropic, google, openai)
     --help          Show help
     --version       Show version
-`, {
-  importMeta: import.meta,
-  flags: {
-    provider: {
-      type: 'string',
-      shortFlag: 'p',
+`,
+  {
+    importMeta: import.meta,
+    flags: {
+      provider: {
+        type: 'string',
+        shortFlag: 'p',
+      },
     },
   },
-});
+);
 
 const task = cli.input.join(' ');
 
 // Get default provider from config
 const config = await loadConfig();
-const provider = (cli.flags.provider || config.defaultProvider) as 'anthropic' | 'google' | 'openai';
+const provider = (cli.flags.provider || config.provider) as 'anthropic' | 'google' | 'openai';
 
 render(<App task={task} provider={provider} />);

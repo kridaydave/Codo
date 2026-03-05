@@ -20,6 +20,9 @@ interface ChatModeProps {
     onConnectCancel?: () => void;
     isEnteringKey?: boolean;
     pendingProviderName?: string;
+    isSelectingModel?: boolean;
+    onModelSelect?: (model: string) => void;
+    modelOptions?: { label: string; value: string }[];
 }
 
 function ApiKeyInput({ value, onChange, onSubmit }: { value: string, onChange: any, onSubmit: any }) {
@@ -57,7 +60,7 @@ function ApiKeyInput({ value, onChange, onSubmit }: { value: string, onChange: a
     );
 }
 
-export function ChatMode({ messages, inputValue, onChange, onSubmit, model, isConnecting, onProviderSelect, onConnectCancel, isEnteringKey, pendingProviderName }: ChatModeProps) {
+export function ChatMode({ messages, inputValue, onChange, onSubmit, model, isConnecting, onProviderSelect, onConnectCancel, isEnteringKey, pendingProviderName, isSelectingModel, onModelSelect, modelOptions }: ChatModeProps) {
     const providerOptions = [
         { label: 'Anthropic (Claude Max or API key)', value: 'anthropic' },
         { label: 'OpenAI (ChatGPT Plus/Pro or API key)', value: 'openai' },
@@ -102,7 +105,7 @@ export function ChatMode({ messages, inputValue, onChange, onSubmit, model, isCo
                 })}
             </Box>
 
-            {!isConnecting && !isEnteringKey && (
+            {!isConnecting && !isEnteringKey && !isSelectingModel && (
                 <Box flexDirection="column" marginBottom={1}>
                     <Text color="#333333">─────────────────────────────────────────────────────────────────</Text>
                     <Box>
@@ -137,6 +140,18 @@ export function ChatMode({ messages, inputValue, onChange, onSubmit, model, isCo
                     <Box marginTop={1}>
                         <Text color="gray">Press Enter to save, or Esc to cancel.</Text>
                     </Box>
+                </Box>
+            ) : isSelectingModel ? (
+                <Box flexDirection="column" padding={1} borderStyle="single" borderColor="gray">
+                    <Box justifyContent="space-between" marginBottom={1}>
+                        <Text bold>Select a model</Text>
+                        <Text color="gray">esc</Text>
+                    </Box>
+                    <SelectInput
+                        items={modelOptions || []}
+                        onSelect={(item) => onModelSelect && onModelSelect(item.value)}
+                        itemComponent={SelectItem}
+                    />
                 </Box>
             ) : (
                 <Box borderStyle="round" borderColor="#32CD32" paddingX={1} marginTop={1}>

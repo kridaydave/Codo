@@ -1,8 +1,19 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
+export type ProviderType =
+  | 'anthropic'
+  | 'google'
+  | 'gemini'
+  | 'openai'
+  | 'moonshot'
+  | 'ollama'
+  | 'groq'
+  | 'openrouter'
+  | 'opencode';
+
 export interface CodoConfig {
-  provider: string;
+  provider: ProviderType;
   apiKey: string;
   model: string;
   maxAgents: number;
@@ -30,19 +41,42 @@ const PROVIDER_DEFAULTS: Record<string, string> = {
 
 let cachedConfig: CodoConfig | null = null;
 
-export async function loadConfig(): Promise<CodoConfig> {
-  const configPath = join(process.cwd(), '.codo', 'config.json');
+const DEFAULT_CONFIG_CONTENT = JSON.stringify(
+  {
+    provider: 'gemini',
+    apiKey: 'YOUR_API_KEY_HERE',
+    model: 'gemini-2.5-flash',
+    maxAgents: 5,
+  },
+  null,
+  2,
+);
 
-  let fileContent = '{}';
+export async function loadConfig(): Promise<CodoConfig> {
+  const configDir = join(process.cwd(), '.codo');
+  const configPath = join(configDir, 'config.json');
+
+  let fileContent = '';
   try {
     fileContent = await fs.readFile(configPath, 'utf-8');
-  } catch (err) { }
+  } catch (err) {
+    // Config file doesn't exist - create default
+    console.log('\x1b[33m⚠ No .codo/config.json found. Creating default config...\x1b[0m');
+    try {
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(configPath, DEFAULT_CONFIG_CONTENT, 'utf-8');
+      console.log('\x1b[33m⚠ Please edit .codo/config.json and add your API key\x1b[0m');
+    } catch (mkdirErr) {
+      // Continue - will fail later with proper error
+    }
+    fileContent = DEFAULT_CONFIG_CONTENT;
+  }
 
   let rawConfig: any = {};
   if (fileContent.trim()) {
     try {
       rawConfig = JSON.parse(fileContent);
-    } catch (err) { }
+    } catch (err) {}
   }
 
   const config: Partial<CodoConfig> = {};
@@ -54,12 +88,14 @@ export async function loadConfig(): Promise<CodoConfig> {
     // Auto fallback
     if (!apiKey) {
       const validFallback = Object.entries(rawConfig.providers).find(
-        ([name, data]: any) => data.apiKey && data.apiKey.trim() !== ''
+        ([name, data]: any) => data.apiKey && data.apiKey.trim() !== '',
       );
       if (validFallback) {
         activeProvider = validFallback[0];
         apiKey = (validFallback[1] as any).apiKey;
-        console.log(`\x1b[33m⚠ Falling back to provider ${activeProvider} because default had no key\x1b[0m`);
+        console.log(
+          `\x1b[33m⚠ Falling back to provider ${activeProvider} because default had no key\x1b[0m`,
+        );
       }
     }
 
@@ -87,7 +123,17 @@ export async function loadConfig(): Promise<CodoConfig> {
     }
   }
 
-  const validProviders = ['anthropic', 'gemini', 'google', 'openai', 'moonshot', 'ollama', 'opencode', 'groq', 'openrouter'];
+  const validProviders = [
+    'anthropic',
+    'gemini',
+    'google',
+    'openai',
+    'moonshot',
+    'ollama',
+    'opencode',
+    'groq',
+    'openrouter',
+  ];
   if (config.provider && !validProviders.includes(config.provider)) {
     console.log(
       `✗ Unknown provider: ${config.provider}. Supported: anthropic, gemini, openai, moonshot, ollama, opencode, groq, openrouter`,
@@ -115,7 +161,7 @@ export async function saveConfig(config: CodoConfig): Promise<void> {
   try {
     const fileContent = await fs.readFile(configPath, 'utf-8');
     rawConfig = JSON.parse(fileContent);
-  } catch (e) { }
+  } catch (e) {}
 
   if (rawConfig.providers) {
     let provKey = config.provider === 'gemini' ? 'google' : config.provider;
